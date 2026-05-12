@@ -4,35 +4,46 @@ import { AppPage } from "./pages/AppPage.jsx";
 import "./styles/global.css";
 
 export default function App() {
-  const [page, setPage] = useState(() => {
-    return localStorage.getItem("currentPage") || "landing";
-  });
+  const [page, setPage] = useState(() => localStorage.getItem("currentPage") || "landing");
+  const [step, setStep] = useState(() => Number(localStorage.getItem("currentStep")) || 0);
   const [uiLang, setUiLang] = useState("ru");
   const [yearly, setYearly] = useState(false);
 
-  // При первой загрузке записываем начальное состояние в историю
   useEffect(() => {
-    history.replaceState({ page: page }, "");
+    history.replaceState({ page, step }, "");
   }, []);
 
   const goToApp = () => {
     localStorage.setItem("currentPage", "app");
+    localStorage.setItem("currentStep", "0");
     setPage("app");
-    history.pushState({ page: "app" }, "");
+    setStep(0);
+    history.pushState({ page: "app", step: 0 }, "");
   };
 
   const goToLanding = () => {
     localStorage.setItem("currentPage", "landing");
+    localStorage.setItem("currentStep", "0");
     setPage("landing");
-    history.pushState({ page: "landing" }, "");
+    setStep(0);
+    history.pushState({ page: "landing", step: 0 }, "");
   };
 
-  // Слушаем кнопки "Назад" и "Вперёд"
+  const handleStepChange = (newStep) => {
+    localStorage.setItem("currentStep", String(newStep));
+    setStep(newStep);
+    history.pushState({ page: "app", step: newStep }, "");
+  };
+
   useEffect(() => {
     const handlePopState = (event) => {
-      const newPage = event.state?.page || "landing";
+      const s = event.state || {};
+      const newPage = s.page || "landing";
+      const newStep = s.step ?? 0;
       localStorage.setItem("currentPage", newPage);
+      localStorage.setItem("currentStep", String(newStep));
       setPage(newPage);
+      setStep(newStep);
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -44,6 +55,8 @@ export default function App() {
       <AppPage
         uiLang={uiLang}
         onBack={goToLanding}
+        step={step}
+        onStepChange={handleStepChange}
       />
     );
   }
