@@ -50,7 +50,12 @@ export default function App() {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
-
+return (
+  <>
+    <CookieBanner />
+    {page === "app" ? <AppPage ... /> : <LandingPage ... />}
+  </>
+);
   if (page === "app") {
     return (
       <AppPage
