@@ -7,11 +7,11 @@ import { usePostGenerator } from "../hooks/usePostGenerator.js";
 import { NICHES, FORMATS, NETWORKS, LANGS, FREE_LIMIT } from "../data/constants.js";
 import { UI } from "../data/translations.js";
 
-export function AppPage({ uiLang, onBack }) {
+export function AppPage({ uiLang, onBack, step, onStepChange }) {
   const t = UI[uiLang];
+  const setStep = onStepChange;
 
   // ── wizard state ──
-  const [step,   setStep]   = useState(0);
   const [niche,  setNiche]  = useState(null);
   const [custom, setCustom] = useState("");
   const [topic,  setTopic]  = useState("");
