@@ -53,12 +53,6 @@ export default function App() {
 
   if (page === "app") {
     return (
-  <>
-    <CookieBanner />
-    {page === "app" ? <AppPage ... /> : <LandingPage ... />}
-  </>
-);
-    return (
       <AppPage
         uiLang={uiLang}
         onBack={goToLanding}
