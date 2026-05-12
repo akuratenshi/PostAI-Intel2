@@ -1,14 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useAuth } from "@clerk/clerk-react";
 import { NETWORKS, LANGS, FREE_LIMIT } from "../data/constants.js";
 
-// Всі виклики йдуть через наші serverless-функції (/api/*)
-// Ключ Anthropic зберігається тільки на сервері Vercel.
-
-async function callApi(path, body) {
+async function callApi(path, body, token) {
   const res = await fetch(path, {
     method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify(body),
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -18,15 +19,26 @@ async function callApi(path, body) {
 }
 
 export function usePostGenerator() {
+  const { getToken, userId } = useAuth();
   const [loading, setLoading] = useState(false);
   const [loadSt,  setLoadSt]  = useState(0);
   const [posts,   setPosts]   = useState([]);
   const [imgs,    setImgs]    = useState([]);
   const [used,    setUsed]    = useState(0);
 
+  // Загружаем счётчик с сервера при старте
+  useEffect(() => {
+    if (!userId) return;
+    fetch(`/api/usage?userId=${userId}`)
+      .then((r) => r.json())
+      .then((data) => setUsed(data.used ?? 0))
+      .catch(() => {});
+  }, [userId]);
+
   const fetchImgs = async (query) => {
     try {
-      const { keywords } = await callApi("/api/keywords", { query });
+      const token = await getToken();
+      const { keywords } = await callApi("/api/keywords", { query }, token);
       const kw = encodeURIComponent(keywords);
       setImgs(
         [0, 1, 2].map(
@@ -50,12 +62,10 @@ export function usePostGenerator() {
     setPosts([]);
     setImgs([]);
     setLoadSt(1);
-
     fetchImgs(nicheLabel + (topic ? " " + topic : ""));
 
     const networkLabel = NETWORKS.find((n) => n.id === net)?.label ?? net;
     const langLabel    = LANGS.find((l) => l.id === pLang)?.label ?? pLang;
-
     const prompt =
       `Ты профессиональный SMM-специалист. Создай 3 разных поста для ${networkLabel} на ${langLabel} языке.\n` +
       `Ниша: ${nicheLabel}${topic ? "\nТема: " + topic : ""}\n` +
@@ -67,10 +77,17 @@ export function usePostGenerator() {
 
     try {
       setLoadSt(2);
-      const { text } = await callApi("/api/generate", { prompt, maxTokens: 1000 });
+      const token = await getToken();
+
+      // Генерируем пост И увеличиваем счётчик на сервере
+      const { text } = await callApi("/api/generate", { prompt, maxTokens: 1000, userId }, token);
       const parts = text.split(/===ПОСТ \d+===/i).filter((p) => p.trim());
       setPosts(parts.length > 1 ? parts : [text]);
-      setUsed((u) => u + 1);
+
+      // Обновляем счётчик на сервере
+      const { used: newUsed } = await callApi("/api/usage/increment", { userId }, token);
+      setUsed(newUsed);
+
       return { success: true };
     } catch (err) {
       console.error("generate error:", err);
