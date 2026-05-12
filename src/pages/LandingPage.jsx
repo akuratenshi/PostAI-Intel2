@@ -461,7 +461,7 @@ export function LandingPage({ uiLang, setUiLang, yearly, setYearly, onEnterApp }
 
         <div style={{ textAlign: "center", marginTop: "32px" }}>
           <p style={{ fontSize: "13px", color: "var(--text-dim)", marginBottom: "16px" }}>
-            💳 Stripe · Безопасно · Отмена в любой момент
+            💳 Stripe 
           </p>
           <a
             href={TG}
@@ -478,9 +478,6 @@ export function LandingPage({ uiLang, setUiLang, yearly, setYearly, onEnterApp }
               textDecoration: "none",
             }}
           >
-            <TgSvg />
-            <span style={{ fontWeight: 600, fontSize: "15px", color: "var(--text)" }}>
-              {t.contact}
             </span>
           </a>
         </div>
