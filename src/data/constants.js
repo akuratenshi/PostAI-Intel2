@@ -33,10 +33,10 @@ export const NETWORKS = [
 ];
 
 export const LANGS = [
-  { id: "ru", label: "🇷🇺 Русский"    },
-  { id: "uk", label: "🇺🇦 Українська" },
-  { id: "pl", label: "🇵🇱 Polski"     },
-  { id: "en", label: "🇬🇧 English"    },
+  { id: "en", label: "GB English"    },
+  { id: "uk", label: "UA Українська" },
+  { id: "pl", label: "PL Polski"     },
+  { id: "ru", label: "RU Русский"    },
 ];
 
 export const PLANS = [
@@ -46,4 +46,4 @@ export const PLANS = [
   { pk: "p3", price: 79, py: 63,   period: "/мес", badge: false, primary: false },
 ];
 
-export const UI_LANGS = ["ru", "uk", "pl", "en"];
+export const UI_LANGS = ["en", "uk", "pl", "ru"];
