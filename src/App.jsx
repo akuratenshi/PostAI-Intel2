@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { LandingPage } from "./pages/LandingPage.jsx";
 import { AppPage } from "./pages/AppPage.jsx";
 import "./styles/global.css";
+import { CookieBanner } from "./components/CookieBanner.jsx";
 
 export default function App() {
   const [page, setPage] = useState(() => localStorage.getItem("currentPage") || "landing");
@@ -51,6 +52,12 @@ export default function App() {
   }, []);
 
   if (page === "app") {
+    return (
+  <>
+    <CookieBanner />
+    {page === "app" ? <AppPage ... /> : <LandingPage ... />}
+  </>
+);
     return (
       <AppPage
         uiLang={uiLang}
