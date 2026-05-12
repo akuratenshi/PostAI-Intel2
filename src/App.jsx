@@ -10,22 +10,29 @@ export default function App() {
   const [uiLang, setUiLang] = useState("ru");
   const [yearly, setYearly] = useState(false);
 
+  // При первой загрузке записываем начальное состояние в историю
+  useEffect(() => {
+    history.replaceState({ page: page }, "");
+  }, []);
+
   const goToApp = () => {
     localStorage.setItem("currentPage", "app");
     setPage("app");
-    history.pushState({ page: "app" }, "");  // добавляем в историю
+    history.pushState({ page: "app" }, "");
   };
 
   const goToLanding = () => {
     localStorage.setItem("currentPage", "landing");
     setPage("landing");
+    history.pushState({ page: "landing" }, "");
   };
 
-  // Слушаем кнопку "Назад" в браузере
+  // Слушаем кнопки "Назад" и "Вперёд"
   useEffect(() => {
-    const handlePopState = () => {
-      localStorage.setItem("currentPage", "landing");
-      setPage("landing");
+    const handlePopState = (event) => {
+      const newPage = event.state?.page || "landing";
+      localStorage.setItem("currentPage", newPage);
+      setPage(newPage);
     };
 
     window.addEventListener("popstate", handlePopState);
