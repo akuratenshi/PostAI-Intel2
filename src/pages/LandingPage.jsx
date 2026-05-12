@@ -461,30 +461,8 @@ export function LandingPage({ uiLang, setUiLang, yearly, setYearly, onEnterApp }
 
         <div style={{ textAlign: "center", marginTop: "32px" }}>
           <p style={{ fontSize: "13px", color: "var(--text-dim)", marginBottom: "16px" }}>
-            💳 Stripe · Безопасно · Отмена в любой момент
+            💳 Stripe 
           </p>
-          <a
-            href={TG}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "10px",
-              padding: "13px 28px",
-              borderRadius: "14px",
-              background: "linear-gradient(135deg,rgba(124,92,252,0.15),rgba(168,85,247,0.1))",
-              border: "1px solid var(--border-accent)",
-              textDecoration: "none",
-            }}
-          >
-            <TgSvg />
-            <span style={{ fontWeight: 600, fontSize: "15px", color: "var(--text)" }}>
-              {t.contact}
-            </span>
-          </a>
-        </div>
-      </section>
 
       {/* ── FOOTER ── */}
       <footer style={{ borderTop: "1px solid var(--border)", padding: "36px 24px", textAlign: "center" }}>
