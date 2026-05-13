@@ -7,7 +7,7 @@ const redis = new Redis({
 });
 
 const FREE_LIMIT = 3;
-const ADMIN_EMAILS = ["akuratenshii@gmail.com", "fredfredric634@gmail.com"]; // ← твои админы
+const ADMIN_EMAILS = ["akuratenshii@gmail.com", "v.crypto.t@gmail.com"]; // ← твои админы
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
