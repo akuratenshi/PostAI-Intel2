@@ -17,7 +17,7 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
   const [topic,  setTopic]  = useState("");
   const [fmt,    setFmt]    = useState("top5");
   const [net,    setNet]    = useState("telegram");
-  const [pLang,  setPLang]  = useState("ru");
+ const [pLang, setPLang] = useState(uiLang);
   const [comp,   setComp]   = useState("");
   const [copied, setCopied] = useState(null);
   const [pw,     setPw]     = useState(false);
