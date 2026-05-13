@@ -9,7 +9,7 @@ export default function App() {
   const { isSignedIn } = useAuth();
 const [page, setPage] = useState(() => localStorage.getItem("currentPage") || "landing");
   const [step, setStep] = useState(() => Number(localStorage.getItem("currentStep")) || 0);
-  const [uiLang, setUiLang] = useState("ru");
+  const [uiLang, setUiLang] = useState("en");
   const [yearly, setYearly] = useState(false);
 
   useEffect(() => {
