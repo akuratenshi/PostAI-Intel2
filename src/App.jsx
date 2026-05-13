@@ -7,7 +7,11 @@ import { useAuth, SignIn } from "@clerk/clerk-react";
 
 export default function App() {
   const { isSignedIn } = useAuth();
-  const [page, setPage] = useState(() => localStorage.getItem("currentPage") || "landing");
+const [page,   setPage]   = useState("landing"); // "landing" | "app"
+const [uiLang, setUiLangState] = useState(
+  localStorage.getItem("ui_lang") ||
+  (navigator.language?.startsWith("en") ? "uk" : "en")
+);
   const [step, setStep] = useState(() => Number(localStorage.getItem("currentStep")) || 0);
   const [uiLang, setUiLang] = useState("ru");
   const [yearly, setYearly] = useState(false);
