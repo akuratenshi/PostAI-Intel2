@@ -15,7 +15,6 @@ async function callApi(path, body, token) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    // Пробрасываем машиночитаемый код ошибки если есть
     throw new Error(err.error ?? `HTTP ${res.status}`);
   }
   return res.json();
@@ -31,12 +30,11 @@ function parsePosts(rawText) {
     .map((p) => p.trim())
     .filter(Boolean);
 
-  // Если разбивка не сработала — возвращаем весь текст одним постом
   return parts.length >= 2 ? parts : [rawText];
 }
 
 /**
- * Строит структурированный промпт для Haiku.
+ * Строит структурированный промпт.
  * Системный промпт живёт на сервере (generate.js), здесь только пользовательская часть.
  */
 function buildPrompt({ nicheLabel, topic, formatLabel, fmt, networkLabel, langLabel, comp }) {
@@ -54,7 +52,8 @@ function buildPrompt({ nicheLabel, topic, formatLabel, fmt, networkLabel, langLa
 
   lines.push(
     "",
-    "Создай 3 варианта поста. Каждый с разным углом подачи.",
+    "Создай 3 варианта поста. Каждый с разным углом подачи: эмоциональный, экспертный, провокационный.",
+    "Пиши плотно — только факты и смысл, никакой воды и повторений.",
     "Каждый пост начинай СТРОГО с: ===ПОСТ 1===, ===ПОСТ 2===, ===ПОСТ 3==="
   );
 
@@ -109,7 +108,6 @@ export function usePostGenerator() {
   // ─── Основная функция генерации ───────────────────────────────────────────
 
   const generate = async ({ niche, nicheLabel, topic, fmt, net, pLang, comp, formatLabel }) => {
-    // Клиентская проверка лимита (до запроса)
     if (used >= FREE_LIMIT) return { limitReached: true };
 
     if (!email) {
@@ -146,7 +144,6 @@ export function usePostGenerator() {
       const parsed = parsePosts(data.text);
       setPosts(parsed);
 
-      // Обновляем счётчик и предупреждение из ответа сервера
       if (data.usage) {
         setUsed(data.usage.used);
         if (data.usage.warning) setWarning(data.usage.warning);
@@ -155,7 +152,6 @@ export function usePostGenerator() {
       return { success: true };
 
     } catch (err) {
-      // Лимит исчерпан — сервер вернул 429
       if (err.message === "free_limit_reached") {
         setUsed(FREE_LIMIT);
         return { limitReached: true };
