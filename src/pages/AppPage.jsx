@@ -4,8 +4,89 @@ import { Steps }     from "../components/Steps.jsx";
 import { PostImage } from "../components/PostImage.jsx";
 import { Paywall }   from "../components/Paywall.jsx";
 import { usePostGenerator } from "../hooks/usePostGenerator.js";
-import { NICHES, FORMATS, NETWORKS, LANGS, FREE_LIMIT } from "../data/constants.js";
+import { NICHES, FORMATS, NETWORKS, LANGS } from "../data/constants.js";
 import { UI } from "../data/translations.js";
+
+// Free limit is now 2 posts
+const FREE_LIMIT = 2;
+
+/**
+ * Strips AI "meta" content from a generated post:
+ * - Leading lines that are planning/thinking text (before the actual post)
+ * - Trailing lines that summarize all posts (after the last post)
+ */
+function cleanPost(raw) {
+  if (!raw) return raw;
+
+  const lines = raw.split("\n");
+
+  // Find where the actual post content starts.
+  // Skip leading lines that look like AI thinking/planning:
+  // e.g. lines containing "помогу", "найду", "создаю", "варианта поста", "актуальн", "---", "—", or are empty
+  const metaPatterns = [
+    /помогу тебе/i,
+    /найду/i,
+    /создаю\s+\d/i,
+    /варианта? поста/i,
+    /актуальн/i,
+    /на основе этой информации/i,
+    /^—+$/,
+    /^-{2,}$/,
+    /^_{2,}$/,
+  ];
+
+  let startIdx = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue; // skip empty lines at top
+    const isMeta = metaPatterns.some((re) => re.test(line));
+    if (isMeta) {
+      startIdx = i + 1;
+    } else {
+      break;
+    }
+  }
+
+  // Find where trailing summary/meta starts.
+  // The AI often appends after a separator like "—" or "---" a block
+  // summarizing all posts: "**Все N поста готовы...**"
+  const summaryPatterns = [
+    /все\s+\d+\s+пост/i,
+    /готов[ыа]\s+к\s+публикаци/i,
+    /\*\*пост\s*[1-9]\*\*\s*[–—-]/i,
+    /пост\s*[1-9]\s*[–—-]/i,
+  ];
+
+  let endIdx = lines.length;
+  // Walk backwards to find the trailing meta block
+  for (let i = lines.length - 1; i >= startIdx; i--) {
+    const line = lines[i].trim();
+    if (!line || line.match(/^[—\-_]+$/)) {
+      // potential separator — keep scanning up
+      continue;
+    }
+    const isSummary = summaryPatterns.some((re) => re.test(line));
+    if (isSummary) {
+      // Everything from the separator before this line should be cut
+      // Find the separator line above
+      let sepIdx = i;
+      for (let j = i - 1; j >= startIdx; j--) {
+        if (lines[j].trim().match(/^[—\-_*]+$/) || !lines[j].trim()) {
+          sepIdx = j;
+        } else {
+          break;
+        }
+      }
+      endIdx = sepIdx;
+      break;
+    } else {
+      break;
+    }
+  }
+
+  const cleaned = lines.slice(startIdx, endIdx).join("\n").trim();
+  return cleaned || raw.trim();
+}
 
 export function AppPage({ uiLang, onBack, step, onStepChange }) {
   const t = UI[uiLang];
@@ -26,6 +107,9 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
 
   const nicheObj   = NICHES.find((n) => n.id === niche);
   const nicheLabel = niche === "custom" ? custom : nicheObj ? t[nicheObj.tk] : "";
+
+  // Clean posts before rendering
+  const cleanedPosts = posts.map(cleanPost);
 
   const cp = (txt, i) => {
     navigator.clipboard.writeText(txt.trim());
@@ -276,7 +360,7 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
             >
               <div>
                 <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: "22px", fontWeight: 700 }}>
-                  {nicheObj?.icon} {posts.length} {t.s2r}
+                  {nicheObj?.icon} {cleanedPosts.length} {t.s2r}
                 </h2>
                 <p style={{ fontSize: "13px", color: "var(--text-dim)", marginTop: "4px" }}>
                   {t.s2ni} {nicheLabel} · {NETWORKS.find((n) => n.id === net)?.label}
@@ -288,7 +372,7 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
               </div>
             </div>
 
-            {posts.map((post, i) => (
+            {cleanedPosts.map((post, i) => (
               <div key={i} className="post-card">
                 <PostImage src={imgs[i]} />
                 <div
@@ -329,23 +413,6 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
                 </div>
               </div>
             ))}
-
-            <div
-              style={{
-                padding: "16px",
-                background: "rgba(124,92,252,0.06)",
-                border: "1px solid var(--border-accent)",
-                borderRadius: "14px",
-                marginTop: "8px",
-              }}
-            >
-              <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "8px" }}>{t.s2pt}</div>
-              <div style={{ fontSize: "13px", color: "var(--text-dim)", lineHeight: 1.6 }}>
-                {t.s2px}
-                <br />
-                <span style={{ color: "var(--accent)" }}>{t.s2ps}</span>
-              </div>
-            </div>
           </div>
         )}
       </div>
