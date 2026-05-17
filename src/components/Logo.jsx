@@ -39,7 +39,6 @@ export function Logo({ size = 32 }) {
             marginLeft: "6px",
           }}
         >
-          Intel
         </span>
       </span>
     </div>
