@@ -110,7 +110,7 @@ export default async function handler(req, res) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
+        model: "claude-sonnet-4-20250514",
         max_tokens: maxTokens,
         system: SYSTEM_PROMPT,
         tools: [
@@ -173,6 +173,13 @@ export default async function handler(req, res) {
       .replace(/\n\n(\d[️⃣])/g, "\n$1")
       // 5. Убираем более двух подряд пустых строк
       .replace(/\n{3,}/g, "\n\n")
+      // 6. Исправляем частые русские слова в украинском тексте (страховка)
+      .replace(/\bЕсли\b/g, "Якщо")
+      .replace(/\bесли\b/g, "якщо")
+      .replace(/\bсмотреть\b/gi, "дивитися")
+      .replace(/\bчемпионат(ы|а|ов|е)?\b/gi, (m) => m.startsWith("ч") ? "чемпіонат" : "Чемпіонат")
+      .replace(/\bигрок(и|а|ов|ам|ами)?\b/gi, "гравець")
+      .replace(/\bкоманд(а|ы|е|у|ой)?\b/g, (m) => m[0] === "К" ? "Команда" : "команда")
       .trim();
 
     // Счётчик
