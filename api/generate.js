@@ -131,14 +131,17 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      console.error("Anthropic error:", JSON.stringify(err));
+      console.error("Anthropic error full:", JSON.stringify(err), "status:", response.status);
 
       if (response.status === 529 || err.error?.type === "overloaded_error") {
         return res.status(503).json({ error: "Сервис временно перегружен. Попробуйте через минуту." });
       }
 
+      // Возвращаем полную ошибку клиенту для диагностики
       return res.status(response.status).json({
         error: err.error?.message ?? "Anthropic error",
+        debug_type: err.error?.type,
+        debug_status: response.status,
       });
     }
 
@@ -159,27 +162,17 @@ export default async function handler(req, res) {
     const markerIndex = rawText.search(/={2,}ПОСТ\s*\d+={2,}/i);
     const stripped = markerIndex > 0 ? rawText.slice(markerIndex) : rawText;
 
-    // ─── Постобработка текста ────────────────────────────────────────────────
+    // ─── Постобработка текста ─────────────────────────────────────────────
     const text = stripped
-      // 1. Прикрепляем одиночный знак препинания в начале строки к предыдущей
-      .replace(/\n([.,;:!?…])\s*/g, "$1 ")
-      // 2. Убираем строки содержащие ТОЛЬКО знак препинания
-      .replace(/^\s*[.,;:!?…]\s*$/gm, "")
-      // 3. Склеиваем строку-продолжение с предыдущей если текущая не начинается
-      //    с эмодзи, цифры+точки, маркера === или пустой строки
-      //    (убирает перенос предложения на следующую строку)
-      .replace(/([^\n])\n(?!\n)(?!={2,})(?![0-9][\.️⃣]|[\u{1F300}-\u{1FFFF}]|[\u2600-\u27BF])/gu, "$1 ")
-      // 4. Убираем пустые строки между пунктами списка (число+эмодзи после пустой строки)
-      .replace(/\n\n(\d[️⃣])/g, "\n$1")
-      // 5. Убираем более двух подряд пустых строк
+      .replace(/\n([.,;:!?\u2026])\s*/g, "$1 ")
+      .replace(/^\s*[.,;:!?\u2026]\s*$/gm, "")
+      .replace(/\n\n(\d)/g, "\n$1")
       .replace(/\n{3,}/g, "\n\n")
-      // 6. Исправляем частые русские слова в украинском тексте (страховка)
-      .replace(/\bЕсли\b/g, "Якщо")
-      .replace(/\bесли\b/g, "якщо")
-      .replace(/\bсмотреть\b/gi, "дивитися")
-      .replace(/\bчемпионат(ы|а|ов|е)?\b/gi, (m) => m.startsWith("ч") ? "чемпіонат" : "Чемпіонат")
-      .replace(/\bигрок(и|а|ов|ам|ами)?\b/gi, "гравець")
-      .replace(/\bкоманд(а|ы|е|у|ой)?\b/g, (m) => m[0] === "К" ? "Команда" : "команда")
+      .replace(/\bЕсли\b/g, "\u042f\u043a\u0449\u043e")
+      .replace(/\bесли\b/g, "\u044f\u043a\u0449\u043e")
+      .replace(/\bсмотреть\b/gi, "\u0434\u0438\u0432\u0438\u0442\u0438\u0441\u044f")
+      .replace(/\bчемпионаты\b/gi, "\u0447\u0435\u043c\u043f\u0456\u043e\u043d\u0430\u0442\u0438")
+      .replace(/\bчемпионат\b/gi, "\u0447\u0435\u043c\u043f\u0456\u043e\u043d\u0430\u0442")
       .trim();
 
     // Счётчик
