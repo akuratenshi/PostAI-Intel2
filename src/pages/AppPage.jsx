@@ -7,8 +7,8 @@ import { usePostGenerator } from "../hooks/usePostGenerator.js";
 import { NICHES, FORMATS, NETWORKS, LANGS } from "../data/constants.js";
 import { UI } from "../data/translations.js";
 
-// Free limit is now 2 posts
-const FREE_LIMIT = 2;
+// Free limit is now 1 post
+const FREE_LIMIT = 1;
 
 /**
  * Strips AI "meta" content from a generated post:
