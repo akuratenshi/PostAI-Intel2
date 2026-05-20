@@ -7,7 +7,7 @@ const redis = new Redis({
 });
 
 const FREE_LIMIT = 3;
-const ADMIN_EMAILS = ["akuratenshii@gmail.com", "v.crypto.t@gmail.com"];
+const ADMIN_EMAILS = ["nebessnyy@gmail.com", "v.crypto.t@gmail.com"];
 
 const SYSTEM_PROMPT = `You are a senior Social Media Marketing specialist with 10+ years of experience
 creating viral content for Telegram, Instagram, Facebook, and Threads.
