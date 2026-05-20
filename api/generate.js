@@ -314,7 +314,7 @@ function buildUserPrompt({ niche, topic, format, platform, language, competitors
 
   const langLabel = langMap[language] || language;
 
-  return `Generate a social media post with these parameters:
+  return `Generate exactly ONE social media post with these parameters:
 
 - Niche: ${niche}
 - Topic: ${topic || "Choose the most trending topic in this niche right now"}
@@ -327,7 +327,8 @@ IMPORTANT:
 1. First use web_search to find current, real information
 2. Search globally, not limited to ${langLabel}-speaking content
 3. Write the final post in ${langLabel} language
-4. Return result as a raw JSON object — no markdown, no code fences, no extra text`.trim();
+4. Generate ONE post only — not two, not three, exactly one
+5. Return result as a raw JSON object — no markdown, no code fences, no extra text`.trim();
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -392,7 +393,7 @@ export default async function handler(req, res) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: maxTokens,
         system: SYSTEM_PROMPT,
         tools: [
