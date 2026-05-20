@@ -21,42 +21,29 @@ async function callApi(path, body, token) {
 }
 
 /**
- * Разбивает текст с маркерами ===ПОСТ N=== на массив строк.
- * Работает даже если модель добавила пробелы или другой регистр.
- */
-function parsePosts(rawText) {
-  const parts = rawText
-    .split(/={2,}ПОСТ\s*\d+={2,}/i)
-    .map((p) => p.trim())
-    .filter(Boolean);
-
-  // Ожидаем 2 поста — если разбивка не сработала, возвращаем весь текст
-  return parts.length >= 2 ? parts : [rawText];
-}
-
-/**
- * Строит структурированный промпт.
- * Системный промпт живёт на сервере (generate.js), здесь только пользовательская часть.
+ * Строит структурированный промпт для нового API (один пост, JSON-ответ).
  */
 function buildPrompt({ nicheLabel, topic, formatLabel, fmt, networkLabel, langLabel, comp }) {
   const lines = [
-    `Ниша: ${nicheLabel}`,
-    topic ? `Тема: ${topic}` : "Тема: выбери самую актуальную в нише прямо сейчас",
-    `Формат постов: ${formatLabel || fmt}`,
-    `Платформа: ${networkLabel}`,
-    `Язык: ${langLabel}`,
+    `Niche: ${nicheLabel}`,
+    `Topic: ${topic || "Choose the most trending topic in this niche right now"}`,
+    `Format: ${formatLabel || fmt}`,
+    `Platform: ${networkLabel}`,
+    `Output language: ${langLabel}`,
   ];
 
   if (comp) {
-    lines.push(`Конкуренты для анализа стиля: ${comp} — изучи их последние посты через поиск и сделай лучше`);
+    lines.push(`Competitor channels for style reference: ${comp}`);
   }
 
   lines.push(
     "",
-    "Начни ответ сразу с ===ПОСТ 1=== — без вступлений и объяснений.",
-    "Два поста с разными углами: эмоциональный и провокационный.",
-    "Каждое предложение — новая информация. Никакой воды.",
-    "Маркеры: ===ПОСТ 1===, ===ПОСТ 2==="
+    "IMPORTANT:",
+    "1. First use web_search to find current, real information",
+    `2. Search globally, not limited to ${langLabel}-speaking content`,
+    `3. Write the final post in ${langLabel} language`,
+    "4. Generate ONE post only — not two, not three, exactly one",
+    "5. Return result as a raw JSON object — no markdown, no code fences, no extra text"
   );
 
   return lines.join("\n");
@@ -135,7 +122,7 @@ export function usePostGenerator() {
     const prompt = buildPrompt({ nicheLabel, topic, formatLabel, fmt, networkLabel, langLabel, comp });
 
     try {
-      setLoadSt(2); // "Пишем посты..."
+      setLoadSt(2); // "Пишем пост..."
 
       const data = await callApi(
         "/api/generate",
@@ -143,8 +130,13 @@ export function usePostGenerator() {
         token
       );
 
-      const parsed = parsePosts(data.text);
-      setPosts(parsed);
+      // API возвращает JSON с полем `post` (и `text` для обратной совместимости)
+      const postText = data.post ?? data.text ?? "";
+
+      if (!postText) throw new Error("empty_response");
+
+      // Всегда один пост
+      setPosts([postText]);
 
       if (data.usage) {
         setUsed(data.usage.used);
@@ -159,9 +151,10 @@ export function usePostGenerator() {
         return { limitReached: true };
       }
 
-      const msg = err.message.includes("overloaded") || err.message.includes("503")
-        ? "Сервис перегружен. Попробуйте через минуту."
-        : "Ошибка соединения. Попробуйте снова.";
+      const msg =
+        err.message.includes("overloaded") || err.message.includes("503")
+          ? "Сервис перегружен. Попробуйте через минуту."
+          : "Ошибка соединения. Попробуйте снова.";
 
       setError(msg);
       setPosts([]);
