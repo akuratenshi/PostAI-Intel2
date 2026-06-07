@@ -33,42 +33,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    // DEBUG: показываем конфиг и результат запроса
-    const now = new Date().toISOString();
-    const debugUrl = `${SUPABASE_URL}/rest/v1/scheduled_posts?select=*&status=eq.pending&scheduled_at=lte.${now}`;
-    
-    const debugResponse = await fetch(debugUrl, {
-      method: 'GET',
-      headers: {
-        'apikey':        SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type':  'application/json',
-      },
-    });
+    const pendingPosts = await getPendingPosts();
 
-    const debugData = await debugResponse.json();
-
-    // Возвращаем отладочную информацию
-    if (isGet) {
-      return res.status(200).json({
-        debug: true,
-        supabase_url: SUPABASE_URL,
-        anon_key_prefix: SUPABASE_ANON_KEY ? SUPABASE_ANON_KEY.substring(0, 20) + '...' : 'NOT SET',
-        query_time: now,
-        supabase_status: debugResponse.status,
-        rows_found: Array.isArray(debugData) ? debugData.length : 'not array',
-        raw_response: debugData,
-      });
-    }
-
-    const pendingPosts = Array.isArray(debugData) ? debugData : [];
-
-    if (pendingPosts.length === 0) {
+    if (!pendingPosts || pendingPosts.length === 0) {
       return res.status(200).json({
         ok: true,
         message: 'Нет постов для публикации',
         published: 0,
-        time: now,
+        time: new Date().toISOString(),
       });
     }
 
@@ -77,14 +49,18 @@ export default async function handler(req, res) {
     for (const post of pendingPosts) {
       try {
         let content = post.post_text;
+
         if (!content) {
           content = await generatePost(post);
           await updatePostText(post.id, content);
         }
+
         const messageId = await sendToTelegram(post.channel_username, content);
         await markPublished(post.id, messageId);
         results.push({ id: post.id, status: 'published', channel: post.channel_username });
+
       } catch (err) {
+        console.error(`[Cron] Ошибка поста ${post.id}:`, err.message);
         await markFailed(post.id, err.message);
         results.push({ id: post.id, status: 'failed', error: err.message });
       }
@@ -98,6 +74,7 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
+    console.error('[Cron] Критическая ошибка:', err);
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
@@ -105,6 +82,7 @@ export default async function handler(req, res) {
 async function getPendingPosts() {
   const now = new Date().toISOString();
   const url = `${SUPABASE_URL}/rest/v1/scheduled_posts?select=*&status=eq.pending&scheduled_at=lte.${now}`;
+
   const response = await fetch(url, {
     method: 'GET',
     headers: {
@@ -113,6 +91,7 @@ async function getPendingPosts() {
       'Content-Type':  'application/json',
     },
   });
+
   if (!response.ok) throw new Error(`Supabase ${response.status}`);
   return response.json();
 }
@@ -123,15 +102,15 @@ async function updatePostText(id, text) {
 
 async function markPublished(id, messageId) {
   await supabasePatch(`/rest/v1/scheduled_posts?id=eq.${id}`, {
-    status: 'published',
-    published_at: new Date().toISOString(),
+    status:              'published',
+    published_at:        new Date().toISOString(),
     telegram_message_id: messageId,
   });
 }
 
 async function markFailed(id, errorMessage) {
   await supabasePatch(`/rest/v1/scheduled_posts?id=eq.${id}`, {
-    status: 'failed',
+    status:        'failed',
     error_message: errorMessage,
   });
 }
@@ -205,12 +184,13 @@ async function sendToTelegram(channelUsername, text) {
     const body = { chat_id: channelUsername, text };
     if (parseMode) body.parse_mode = parseMode;
     const r = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body:    JSON.stringify(body),
     });
     return r.json();
   };
+
   let data = await send('Markdown');
   if (!data.ok) data = await send(null);
   if (!data.ok) throw new Error(`Telegram: ${data.description}`);
