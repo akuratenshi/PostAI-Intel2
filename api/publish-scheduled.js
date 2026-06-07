@@ -8,11 +8,13 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const POSTAI_EMAIL     = process.env.POSTAI_EMAIL;
 
 export default async function handler(req, res) {
-  // Защита — только Vercel Cron может вызывать этот эндпоинт
-  const authHeader = req.headers['authorization'];
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+// Vercel Cron добавляет этот заголовок автоматически
+const isVercelCron = req.headers['x-vercel-cron'] === '1';
+const isManual = req.headers['authorization'] === `Bearer ${process.env.CRON_SECRET}`;
+
+if (!isVercelCron && !isManual) {
+  return res.status(401).json({ error: 'Unauthorized' });
+}
 
   try {
     // 1. Получаем посты которые нужно опубликовать прямо сейчас
