@@ -9,9 +9,20 @@ CORE RULES:
 1. ALWAYS use web_search tool first to find current real information
 2. NEVER invent facts, titles, statistics or names
 3. Write in the language specified by the user
+4. Do NOT include any XML tags, cite tags, or HTML in the output
 
 OUTPUT FORMAT — return ONLY raw JSON, no markdown, no code fences:
 {"post":"full post text","headline":"headline","hashtags":[],"cta":"call to action","sources_used":["source1"],"language":"ru","platform":"telegram","format":"top5","word_count":245}`;
+
+// Очищает cite-теги и другой HTML из текста поста
+function cleanPost(text) {
+  if (!text) return text;
+  return text
+    .replace(/<cite[^>]*>([\s\S]*?)<\/cite>/g, '$1')
+    .replace(/<\/?cite[^>]*>/g, '')
+    .replace(/<[^>]+>/g, '')
+    .trim();
+}
 
 export default async function handler(req, res) {
   const isVercelCron = req.headers['x-vercel-cron'] === '1';
@@ -72,9 +83,8 @@ export default async function handler(req, res) {
 // ── Supabase: получить посты ──────────────────────────────
 async function getPendingPosts() {
   const now = new Date().toISOString();
-  // Используем прямой fetch без encodeURIComponent
   const url = `${SUPABASE_URL}/rest/v1/scheduled_posts?select=*&status=eq.pending&scheduled_at=lte.${now}`;
-  
+
   const response = await fetch(url, {
     method: 'GET',
     headers: {
@@ -126,7 +136,7 @@ async function supabasePatch(path, body) {
 
 // ── Anthropic: генерация поста ────────────────────────────
 async function generatePost(post) {
-  const langMap = { ru: 'Russian', uk: 'Ukrainian', en: 'English', de: 'German', es: 'Spanish' };
+  const langMap   = { ru: 'Russian', uk: 'Ukrainian', en: 'English', de: 'German', es: 'Spanish' };
   const langLabel = langMap[post.language] || 'Russian';
 
   const userPrompt =
@@ -137,7 +147,7 @@ async function generatePost(post) {
     `- Platform: ${post.platform || 'Telegram'}\n` +
     `- Output language: ${langLabel}\n` +
     (post.competitor ? `- Competitor: ${post.competitor}\n` : '') +
-    `\nReturn ONLY raw JSON. No markdown. No code fences.`;
+    `\nIMPORTANT: Return ONLY raw JSON. No markdown. No code fences. No cite tags. No HTML tags.`;
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -161,20 +171,30 @@ async function generatePost(post) {
   }
 
   const data    = await response.json();
-  const rawText = data.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+  const rawText = data.content
+    .filter(b => b.type === 'text')
+    .map(b => b.text)
+    .join('\n')
+    .trim();
 
   if (!rawText) throw new Error('Anthropic вернул пустой ответ');
 
   let parsed;
   try {
-    const start = rawText.indexOf('{');
-    const end   = rawText.lastIndexOf('}');
-    parsed = JSON.parse(start !== -1 ? rawText.slice(start, end + 1) : rawText);
+    const fenceMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch) {
+      parsed = JSON.parse(fenceMatch[1].trim());
+    } else {
+      const start = rawText.indexOf('{');
+      const end   = rawText.lastIndexOf('}');
+      parsed = JSON.parse(start !== -1 ? rawText.slice(start, end + 1) : rawText);
+    }
   } catch {
     parsed = { post: rawText };
   }
 
-  return parsed?.post || parsed?.text || rawText;
+  // Очищаем cite-теги и возвращаем чистый текст
+  return cleanPost(parsed?.post || parsed?.text || rawText);
 }
 
 // ── Telegram: отправка ────────────────────────────────────
@@ -182,8 +202,7 @@ async function sendToTelegram(channelUsername, text) {
   const send = async (parseMode) => {
     const body = { chat_id: channelUsername, text };
     if (parseMode) body.parse_mode = parseMode;
-
-    const r    = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    const r = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(body),
@@ -192,10 +211,7 @@ async function sendToTelegram(channelUsername, text) {
   };
 
   let data = await send('Markdown');
-  if (!data.ok) {
-    // Retry без форматирования
-    data = await send(null);
-  }
+  if (!data.ok) data = await send(null); // retry без форматирования
   if (!data.ok) throw new Error(`Telegram: ${data.description}`);
   return data.result.message_id;
 }
