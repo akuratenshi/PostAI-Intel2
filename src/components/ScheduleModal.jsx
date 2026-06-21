@@ -1,23 +1,22 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 /**
  * Модалка планирования публикации.
- * Открывается по клику на "Запланировать" у готового поста.
- *
- * Props:
- *  - post: текст поста (уже сгенерированный)
- *  - niche, fmt, net, pLang, comp: параметры генерации (для регулярных повторов)
- *  - userEmail: email текущего пользователя (из Clerk)
- *  - onClose: закрыть модалку
+ * Каналы пользователя сохраняются и подгружаются автоматически —
+ * не нужно вводить @username каждый раз.
  */
 export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, onClose }) {
-  const [mode, setMode]               = useState("once"); // "now" | "once" | "recurring"
-  const [channel, setChannel]         = useState("");
+  const [mode, setMode]               = useState("now"); // "now" | "once" | "recurring"
+  const [channels, setChannels]       = useState([]);
+  const [channelsLoading, setChannelsLoading] = useState(true);
+  const [selectedChannel, setSelectedChannel] = useState("");
+  const [addingNew, setAddingNew]     = useState(false);
+  const [newChannel, setNewChannel]   = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [recTime, setRecTime]         = useState("09:00");
   const [recDays, setRecDays]         = useState(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]);
   const [saving, setSaving]           = useState(false);
-  const [result, setResult]           = useState(null); // { ok, error }
+  const [result, setResult]           = useState(null);
 
   const DAYS = [
     { id: "mon", label: "Пн" },
@@ -29,15 +28,56 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
     { id: "sun", label: "Вс" },
   ];
 
+  // ── Загружаем сохранённые каналы пользователя при открытии ──
+  useEffect(() => {
+    if (!userEmail) { setChannelsLoading(false); return; }
+
+    fetch(`/api/user-channels?email=${encodeURIComponent(userEmail)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        const list = data.channels || [];
+        setChannels(list);
+        if (list.length > 0) setSelectedChannel(list[0].channel_username);
+        else setAddingNew(true); // если каналов нет — сразу открываем форму добавления
+      })
+      .catch(() => setAddingNew(true))
+      .finally(() => setChannelsLoading(false));
+  }, [userEmail]);
+
   const toggleDay = (id) => {
     setRecDays((prev) =>
       prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]
     );
   };
 
+  // ── Сохраняет новый канал в список пользователя ──
+  const handleAddChannel = async () => {
+    if (!newChannel.trim()) return;
+    const normalized = newChannel.trim().startsWith("@") ? newChannel.trim() : `@${newChannel.trim()}`;
+
+    try {
+      const res  = await fetch("/api/user-channels", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ user_email: userEmail, channel_username: normalized }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Ошибка добавления");
+
+      setChannels((prev) => [data.channel, ...prev]);
+      setSelectedChannel(normalized);
+      setNewChannel("");
+      setAddingNew(false);
+    } catch (err) {
+      setResult({ ok: false, error: err.message });
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!channel.trim()) {
-      setResult({ ok: false, error: "Укажите канал" });
+    const channel = selectedChannel;
+
+    if (!channel) {
+      setResult({ ok: false, error: "Выберите или добавьте канал" });
       return;
     }
     if (mode === "once" && !scheduledAt) {
@@ -52,16 +92,12 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
     setSaving(true);
     setResult(null);
 
-    // Режим "Сразу" вызывает отдельный эндпоинт публикации, без очереди
     if (mode === "now") {
       try {
-        const res = await fetch("/api/publish-now", {
+        const res  = await fetch("/api/publish-now", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            channel_username: channel.trim().startsWith("@") ? channel.trim() : `@${channel.trim()}`,
-            post_text: post,
-          }),
+          body: JSON.stringify({ channel_username: channel, post_text: post }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Ошибка публикации");
@@ -76,14 +112,14 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
 
     const payload = {
       user_email:       userEmail,
-      channel_username: channel.trim().startsWith("@") ? channel.trim() : `@${channel.trim()}`,
+      channel_username: channel,
       niche,
       format:    fmt,
       language:  pLang,
       competitor: comp || null,
       platform:  net,
       mode,
-      post_text: mode === "once" ? post : null, // регулярные посты всегда генерируются заново
+      post_text: mode === "once" ? post : null,
     };
 
     if (mode === "once") {
@@ -126,7 +162,6 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Если успешно сохранено — показываем подтверждение */}
         {result?.ok ? (
           <div style={{ textAlign: "center", padding: "20px 0" }}>
             <div style={{ fontSize: "40px", marginBottom: "12px" }}>✅</div>
@@ -135,8 +170,8 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
             </h3>
             <p style={{ color: "var(--text-dim)", fontSize: "14px", marginBottom: "20px" }}>
               {mode === "now"
-                ? `Пост уже опубликован в канале ${channel}.`
-                : `Публикация в канал ${channel} произойдёт автоматически.`}
+                ? `Пост уже опубликован в канале ${selectedChannel}.`
+                : `Публикация в канал ${selectedChannel} произойдёт автоматически.`}
             </p>
             <button className="btn-primary" style={{ width: "100%", padding: "12px" }} onClick={onClose}>
               Готово
@@ -154,6 +189,72 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
               >
                 ×
               </button>
+            </div>
+
+            {/* ── Выбор канала ── */}
+            <div style={{ marginBottom: "18px" }}>
+              <label className="label">Канал</label>
+
+              {channelsLoading ? (
+                <div style={{ fontSize: "13px", color: "var(--text-dim)", padding: "10px 0" }}>Загрузка каналов...</div>
+              ) : (
+                <>
+                  {channels.length > 0 && !addingNew && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "10px" }}>
+                      {channels.map((ch) => (
+                        <div
+                          key={ch.id}
+                          onClick={() => setSelectedChannel(ch.channel_username)}
+                          style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            padding: "11px 14px", borderRadius: "9px", cursor: "pointer",
+                            border: `1px solid ${selectedChannel === ch.channel_username ? "var(--accent,#7c5cff)" : "var(--border,#2a2a3a)"}`,
+                            background: selectedChannel === ch.channel_username ? "rgba(124,92,255,0.1)" : "var(--bg3,#1c1c29)",
+                          }}
+                        >
+                          <span style={{ fontSize: "14px", fontWeight: 500 }}>
+                            📢 {ch.channel_label || ch.channel_username}
+                          </span>
+                          {selectedChannel === ch.channel_username && (
+                            <span style={{ color: "var(--accent,#7c5cff)", fontSize: "16px" }}>✓</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {!addingNew ? (
+                    <button
+                      type="button"
+                      className="btn-sm"
+                      style={{ width: "100%" }}
+                      onClick={() => setAddingNew(true)}
+                    >
+                      + Добавить новый канал
+                    </button>
+                  ) : (
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <input
+                        placeholder="@yourchannel"
+                        value={newChannel}
+                        onChange={(e) => setNewChannel(e.target.value)}
+                        style={{ flex: 1 }}
+                      />
+                      <button type="button" className="btn-sm" onClick={handleAddChannel}>
+                        Сохранить
+                      </button>
+                      {channels.length > 0 && (
+                        <button type="button" className="btn-sm" onClick={() => setAddingNew(false)}>
+                          Отмена
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <p style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "6px" }}>
+                    Бот должен быть администратором канала с правом публикации.
+                  </p>
+                </>
+              )}
             </div>
 
             {/* Переключатель режима */}
@@ -178,17 +279,6 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
               ))}
             </div>
 
-            {/* Канал */}
-            <div style={{ marginBottom: "16px" }}>
-              <label className="label">Telegram-канал</label>
-              <input
-                placeholder="@yourchannel"
-                value={channel}
-                onChange={(e) => setChannel(e.target.value)}
-              />
-            </div>
-
-            {/* Разовый режим */}
             {mode === "once" && (
               <div style={{ marginBottom: "16px" }}>
                 <label className="label">Дата и время (UTC)</label>
@@ -200,7 +290,6 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
               </div>
             )}
 
-            {/* Регулярный режим */}
             {mode === "recurring" && (
               <>
                 <div style={{ marginBottom: "16px" }}>
@@ -247,7 +336,7 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
               className="btn-primary"
               style={{ width: "100%", padding: "13px" }}
               onClick={handleSubmit}
-              disabled={saving}
+              disabled={saving || channelsLoading}
             >
               {saving
                 ? (mode === "now" ? "Публикую..." : "Сохраняю...")
@@ -259,4 +348,5 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
     </div>
   );
 }
+
 
