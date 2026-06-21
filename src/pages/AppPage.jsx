@@ -3,6 +3,8 @@ import { Logo }      from "../components/Logo.jsx";
 import { Steps }     from "../components/Steps.jsx";
 import { PostImage } from "../components/PostImage.jsx";
 import { Paywall }   from "../components/Paywall.jsx";
+import { ScheduleModal } from "../components/ScheduleModal.jsx";
+import { useUser } from "@clerk/clerk-react";
 import { usePostGenerator } from "../hooks/usePostGenerator.js";
 import { NICHES, FORMATS, NETWORKS, LANGS } from "../data/constants.js";
 import { UI } from "../data/translations.js";
@@ -102,6 +104,11 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
   const [comp,   setComp]   = useState("");
   const [copied, setCopied] = useState(null);
   const [pw,     setPw]     = useState(false);
+
+  // ── scheduling state ──
+  const [scheduleFor, setScheduleFor] = useState(null); // индекс поста для планирования
+  const { user } = useUser();
+  const userEmail = user?.primaryEmailAddress?.emailAddress || "";
 
   const { loading, loadSt, posts, imgs, used, generate, setPosts } = usePostGenerator();
 
@@ -393,9 +400,14 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
                       {NETWORKS.find((n) => n.id === net)?.icon} {NETWORKS.find((n) => n.id === net)?.label}
                     </span>
                   </div>
-                  <button className="btn-sm" onClick={() => cp(post, i)}>
-                    {copied === i ? t.s2cd : t.s2c}
-                  </button>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button className="btn-sm" onClick={() => cp(post, i)}>
+                      {copied === i ? t.s2cd : t.s2c}
+                    </button>
+                    <button className="btn-sm" onClick={() => setScheduleFor(i)}>
+                      📅 Запланировать
+                    </button>
+                  </div>
                 </div>
                 <div style={{ padding: "16px" }}>
                   <pre
@@ -416,6 +428,20 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
           </div>
         )}
       </div>
+
+      {scheduleFor !== null && (
+        <ScheduleModal
+          post={cleanedPosts[scheduleFor]}
+          niche={niche}
+          fmt={fmt}
+          net={net}
+          pLang={pLang}
+          comp={comp}
+          userEmail={userEmail}
+          onClose={() => setScheduleFor(null)}
+        />
+      )}
     </div>
   );
 }
+
