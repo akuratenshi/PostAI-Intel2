@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PostAI — Планировщик постов</title>
+<style>
+  :root {
+    --bg:        #0a0a14;
+    --surface:   #15151f;
+    --surface-2: #1c1c29;
+    --border:    #2a2a3a;
+    --text:      #f0f0f5;
+    --text-dim:  #8a8a9a;
+    --accent:    #7c5cff;
+    --accent-2:  #b06aff;
+    --success:   #2dd4a0;
+    --error:     #ff5c7a;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 20% 0%, rgba(124,92,255,0.12), transparent 50%),
+      radial-gradient(circle at 80% 100%, rgba(176,106,255,0.08), transparent 50%);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 40px 20px;
+  }
+
+  .wrap { max-width: 560px; margin: 0 auto; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 20px;
+  }
+
+  .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    margin: 0 0 8px;
+    letter-spacing: -0.02em;
+  }
+
+  .subtitle { color: var(--text-dim); margin: 0 0 32px; font-size: 15px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+  }
+
+  .tabs {
+    display: flex;
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 24px;
+  }
+
+  .tab {
+    flex: 1;
+    text-align: center;
+    padding: 10px;
+    border-radius: 7px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+  }
+
+  .tab.active {
+    background: var(--accent);
+    color: white;
+  }
+
+  .field { margin-bottom: 18px; }
+
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+    margin-bottom: 7px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  input, select {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 11px 13px;
+    font-size: 14px;
+    color: var(--text);
+    font-family: inherit;
+    transition: border-color 0.15s ease;
+  }
+
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  input::placeholder { color: #55556a; }
+
+  .row { display: flex; gap: 12px; }
+  .row .field { flex: 1; }
+
+  .days-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+  }
+
+  .day-btn {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 9px 0;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s ease;
+  }
+
+  .day-btn.selected {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+
+  .quick-days {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .quick-day {
+    font-size: 12px;
+    color: var(--accent-2);
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  button[type="submit"] {
+    width: 100%;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border: none;
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 15px;
+    font-weight: 700;
+    color: white;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: opacity 0.15s ease;
+  }
+
+  button[type="submit"]:hover { opacity: 0.92; }
+  button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .hint { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .status {
+    margin-top: 18px;
+    padding: 13px 16px;
+    border-radius: 9px;
+    font-size: 14px;
+    display: none;
+  }
+
+  .status.show { display: block; }
+  .status.success { background: rgba(45,212,160,0.12); color: var(--success); border: 1px solid rgba(45,212,160,0.3); }
+  .status.error   { background: rgba(255,92,122,0.12); color: var(--error); border: 1px solid rgba(255,92,122,0.3); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="badge"><span class="dot"></span> PostAI Scheduler</div>
+  <h1>Запланировать пост</h1>
+  <p class="subtitle">Выберите канал и параметры — публикация произойдёт автоматически.</p>
+
+  <div class="card">
+    <div class="tabs">
+      <div class="tab active" data-mode="once">Разовый пост</div>
+      <div class="tab" data-mode="recurring">Регулярно</div>
+    </div>
+
+    <form id="postForm">
+
+      <div class="field">
+        <label>Email аккаунта</label>
+        <input type="email" id="user_email" placeholder="you@example.com" required>
+      </div>
+
+      <div class="field">
+        <label>Канал Telegram</label>
+        <input type="text" id="channel_username" placeholder="@yourchannel" required>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>Ниша</label>
+          <select id="niche">
+            <option value="sport">Спорт</option>
+            <option value="crypto">Крипта</option>
+            <option value="tech">Технологии</option>
+            <option value="news">Новости</option>
+            <option value="cinema" selected>Кино</option>
+            <option value="gaming">Игры</option>
+            <option value="food">Еда</option>
+            <option value="travel">Путешествия</option>
+            <option value="business">Бизнес</option>
+            <option value="health">Здоровье</option>
+            <option value="fashion">Мода</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Формат</label>
+          <select id="format">
+            <option value="news">Новость</option>
+            <option value="top5" selected>Топ-5</option>
+            <option value="review">Обзор</option>
+            <option value="opinion">Мнение</option>
+            <option value="story">История</option>
+            <option value="tips">Советы</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Тема (опционально)</label>
+        <input type="text" id="topic" placeholder="ИИ найдёт актуальную тему сам, если оставить пустым">
+      </div>
+
+      <div class="field">
+        <label>Конкурент для анализа стиля (опционально)</label>
+        <input type="text" id="competitor" placeholder="@channel1, @channel2">
+      </div>
+
+      <div class="field">
+        <label>Язык</label>
+        <select id="language">
+          <option value="ru" selected>Русский</option>
+          <option value="uk">Украинский</option>
+          <option value="en">English</option>
+          <option value="de">Deutsch</option>
+          <option value="es">Español</option>
+        </select>
+      </div>
+
+      <!-- Разовый пост -->
+      <div class="panel active" id="panel-once">
+        <div class="field">
+          <label>Дата и время публикации (UTC)</label>
+          <input type="datetime-local" id="scheduled_at">
+          <p class="hint">Время указывается в UTC. Текущее UTC: <span id="currentUtc"></span></p>
+        </div>
+      </div>
+
+      <!-- Регулярный пост -->
+      <div class="panel" id="panel-recurring">
+        <div class="field">
+          <label>Время публикации (UTC, ежедневно)</label>
+          <input type="time" id="recurrence_time" value="09:00">
+        </div>
+        <div class="field">
+          <label>Дни недели</label>
+          <div class="days-grid">
+            <div class="day-btn selected" data-day="mon">Пн</div>
+            <div class="day-btn selected" data-day="tue">Вт</div>
+            <div class="day-btn selected" data-day="wed">Ср</div>
+            <div class="day-btn selected" data-day="thu">Чт</div>
+            <div class="day-btn selected" data-day="fri">Пт</div>
+            <div class="day-btn selected" data-day="sat">Сб</div>
+            <div class="day-btn selected" data-day="sun">Вс</div>
+          </div>
+          <div class="quick-days">
+            <span class="quick-day" data-preset="daily">Каждый день</span>
+            <span class="quick-day" data-preset="weekdays">Будни</span>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" id="submitBtn">Запланировать пост</button>
+
+      <div class="status" id="statusBox"></div>
+    </form>
+  </div>
+</div>
+
+<script>
+  // ── Переключение табов ──────────────────────────────
+  const tabs = document.querySelectorAll('.tab');
+  const panels = { once: document.getElementById('panel-once'), recurring: document.getElementById('panel-recurring') };
+  let currentMode = 'once';
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentMode = tab.dataset.mode;
+      Object.values(panels).forEach(p => p.classList.remove('active'));
+      panels[currentMode].classList.add('active');
+    });
+  });
+
+  // ── Дни недели ───────────────────────────────────────
+  const dayButtons = document.querySelectorAll('.day-btn');
+  dayButtons.forEach(btn => {
+    btn.addEventListener('click', () => btn.classList.toggle('selected'));
+  });
+
+  document.querySelectorAll('.quick-day').forEach(el => {
+    el.addEventListener('click', () => {
+      const preset = el.dataset.preset;
+      const weekdays = ['mon','tue','wed','thu','fri'];
+      dayButtons.forEach(btn => {
+        const isWeekday = weekdays.includes(btn.dataset.day);
+        if (preset === 'daily') btn.classList.add('selected');
+        if (preset === 'weekdays') btn.classList.toggle('selected', isWeekday);
+      });
+    });
+  });
+
+  // ── Текущее UTC время для подсказки ─────────────────
+  function updateUtcClock() {
+    document.getElementById('currentUtc').textContent =
+      new Date().toISOString().slice(11, 16) + ' UTC';
+  }
+  updateUtcClock();
+  setInterval(updateUtcClock, 30000);
+
+  // ── Отправка формы ──────────────────────────────────
+  const form = document.getElementById('postForm');
+  const statusBox = document.getElementById('statusBox');
+  const submitBtn = document.getElementById('submitBtn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Сохраняю...';
+    statusBox.className = 'status';
+
+    const payload = {
+      user_email:       document.getElementById('user_email').value.trim(),
+      channel_username: document.getElementById('channel_username').value.trim(),
+      niche:             document.getElementById('niche').value,
+      format:            document.getElementById('format').value,
+      topic:             document.getElementById('topic').value.trim() || null,
+      competitor:        document.getElementById('competitor').value.trim() || null,
+      language:          document.getElementById('language').value,
+      mode:              currentMode,
+    };
+
+    if (currentMode === 'once') {
+      const dtValue = document.getElementById('scheduled_at').value;
+      if (!dtValue) {
+        showStatus('error', 'Укажите дату и время публикации');
+        resetButton();
+        return;
+      }
+      payload.scheduled_at = new Date(dtValue).toISOString();
+    } else {
+      payload.recurrence_time = document.getElementById('recurrence_time').value;
+      const selectedDays = [...dayButtons]
+        .filter(b => b.classList.contains('selected'))
+        .map(b => b.dataset.day);
+      if (selectedDays.length === 0) {
+        showStatus('error', 'Выберите хотя бы один день недели');
+        resetButton();
+        return;
+      }
+      payload.recurrence_days = selectedDays.length === 7 ? 'daily' : selectedDays.join(',');
+    }
+
+    try {
+      const res = await fetch('/api/schedule-post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Ошибка сохранения');
+
+      showStatus('success', currentMode === 'once'
+        ? '✅ Пост запланирован! Публикация произойдёт автоматически.'
+        : '✅ Регулярная публикация настроена!');
+      form.reset();
+
+    } catch (err) {
+      showStatus('error', '❌ ' + err.message);
+    }
+
+    resetButton();
+  });
+
+  function showStatus(type, text) {
+    statusBox.textContent = text;
+    statusBox.className = 'status show ' + type;
+  }
+
+  function resetButton() {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Запланировать пост';
+  }
+</script>
+</body>
+</html>
