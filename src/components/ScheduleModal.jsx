@@ -11,7 +11,7 @@ import { useState } from "react";
  *  - onClose: закрыть модалку
  */
 export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, onClose }) {
-  const [mode, setMode]               = useState("once"); // "once" | "recurring"
+  const [mode, setMode]               = useState("once"); // "now" | "once" | "recurring"
   const [channel, setChannel]         = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [recTime, setRecTime]         = useState("09:00");
@@ -51,6 +51,28 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
 
     setSaving(true);
     setResult(null);
+
+    // Режим "Сразу" вызывает отдельный эндпоинт публикации, без очереди
+    if (mode === "now") {
+      try {
+        const res = await fetch("/api/publish-now", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            channel_username: channel.trim().startsWith("@") ? channel.trim() : `@${channel.trim()}`,
+            post_text: post,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Ошибка публикации");
+        setResult({ ok: true });
+      } catch (err) {
+        setResult({ ok: false, error: err.message });
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
 
     const payload = {
       user_email:       userEmail,
@@ -109,10 +131,12 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
           <div style={{ textAlign: "center", padding: "20px 0" }}>
             <div style={{ fontSize: "40px", marginBottom: "12px" }}>✅</div>
             <h3 style={{ fontFamily: "'Syne',sans-serif", fontSize: "18px", marginBottom: "8px" }}>
-              {mode === "once" ? "Пост запланирован" : "Регулярная публикация настроена"}
+              {mode === "now" ? "Пост опубликован" : mode === "once" ? "Пост запланирован" : "Регулярная публикация настроена"}
             </h3>
             <p style={{ color: "var(--text-dim)", fontSize: "14px", marginBottom: "20px" }}>
-              Публикация в канал {channel} произойдёт автоматически.
+              {mode === "now"
+                ? `Пост уже опубликован в канале ${channel}.`
+                : `Публикация в канал ${channel} произойдёт автоматически.`}
             </p>
             <button className="btn-primary" style={{ width: "100%", padding: "12px" }} onClick={onClose}>
               Готово
@@ -135,6 +159,7 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
             {/* Переключатель режима */}
             <div style={{ display: "flex", background: "var(--bg3, #1c1c29)", borderRadius: "10px", padding: "4px", marginBottom: "18px" }}>
               {[
+                { id: "now", label: "Сразу" },
                 { id: "once", label: "Разовый" },
                 { id: "recurring", label: "Регулярно" },
               ].map((m) => (
@@ -224,7 +249,9 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
               onClick={handleSubmit}
               disabled={saving}
             >
-              {saving ? "Сохраняю..." : "Запланировать"}
+              {saving
+                ? (mode === "now" ? "Публикую..." : "Сохраняю...")
+                : (mode === "now" ? "🚀 Опубликовать сейчас" : "Запланировать")}
             </button>
           </>
         )}
@@ -232,3 +259,4 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
     </div>
   );
 }
+
