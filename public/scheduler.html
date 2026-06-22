@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PostAI — Планировщик постов</title>
+<style>
+  :root {
+    --bg:        #0a0a14;
+    --surface:   #15151f;
+    --surface-2: #1c1c29;
+    --border:    #2a2a3a;
+    --text:      #f0f0f5;
+    --text-dim:  #8a8a9a;
+    --accent:    #7c5cff;
+    --accent-2:  #b06aff;
+    --success:   #2dd4a0;
+    --error:     #ff5c7a;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 20% 0%, rgba(124,92,255,0.12), transparent 50%),
+      radial-gradient(circle at 80% 100%, rgba(176,106,255,0.08), transparent 50%);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  /* ── Экран входа ── */
+  #loginScreen {
+    width: 100%;
+    max-width: 380px;
+  }
+
+  #loginScreen .logo {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+
+  #loginScreen .logo-icon {
+    width: 52px;
+    height: 52px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border-radius: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    margin-bottom: 12px;
+  }
+
+  #loginScreen h2 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+  }
+
+  #loginScreen p {
+    color: var(--text-dim);
+    font-size: 14px;
+    margin: 6px 0 0;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+  }
+
+  .field { margin-bottom: 16px; }
+
+  label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    margin-bottom: 7px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  input, select {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 11px 13px;
+    font-size: 14px;
+    color: var(--text);
+    font-family: inherit;
+    transition: border-color 0.15s ease;
+  }
+
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  input::placeholder { color: #55556a; }
+
+  .btn {
+    width: 100%;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border: none;
+    border-radius: 10px;
+    padding: 13px;
+    font-size: 15px;
+    font-weight: 700;
+    color: white;
+    cursor: pointer;
+    margin-top: 4px;
+    transition: opacity 0.15s ease;
+  }
+
+  .btn:hover { opacity: 0.92; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .login-error {
+    background: rgba(255,92,122,0.12);
+    border: 1px solid rgba(255,92,122,0.3);
+    color: var(--error);
+    border-radius: 9px;
+    padding: 11px 14px;
+    font-size: 13px;
+    margin-top: 14px;
+    display: none;
+  }
+
+  .attempts-left {
+    font-size: 12px;
+    color: var(--text-dim);
+    text-align: center;
+    margin-top: 12px;
+  }
+
+  /* ── Основной экран ── */
+  #mainScreen {
+    display: none;
+    width: 100%;
+    max-width: 560px;
+    align-items: flex-start;
+  }
+
+  #mainScreen.visible {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    width: 100%;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+
+  .logout-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-size: 13px;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .logout-btn:hover { border-color: var(--error); color: var(--error); }
+
+  h1 {
+    font-size: 26px;
+    font-weight: 700;
+    margin: 0 0 6px;
+    letter-spacing: -0.02em;
+  }
+
+  .subtitle { color: var(--text-dim); margin: 0 0 28px; font-size: 15px; }
+
+  .tabs {
+    display: flex;
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 24px;
+  }
+
+  .tab {
+    flex: 1;
+    text-align: center;
+    padding: 10px;
+    border-radius: 7px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+  }
+
+  .tab.active { background: var(--accent); color: white; }
+
+  .row { display: flex; gap: 12px; }
+  .row .field { flex: 1; }
+
+  .days-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+  }
+
+  .day-btn {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 9px 0;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s ease;
+  }
+
+  .day-btn.selected { background: var(--accent); border-color: var(--accent); color: white; }
+
+  .quick-days { display: flex; gap: 8px; margin-top: 10px; }
+  .quick-day { font-size: 12px; color: var(--accent-2); cursor: pointer; text-decoration: underline; }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .hint { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+
+  .status {
+    margin-top: 18px;
+    padding: 13px 16px;
+    border-radius: 9px;
+    font-size: 14px;
+    display: none;
+  }
+
+  .status.show { display: block; }
+  .status.success { background: rgba(45,212,160,0.12); color: var(--success); border: 1px solid rgba(45,212,160,0.3); }
+  .status.error   { background: rgba(255,92,122,0.12); color: var(--error); border: 1px solid rgba(255,92,122,0.3); }
+</style>
+</head>
+<body>
+
+<!-- ── Экран входа ── -->
+<div id="loginScreen">
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    <h2>PostAI Scheduler</h2>
+    <p>Введите пароль для доступа</p>
+  </div>
+
+  <div class="card">
+    <div class="field">
+      <label>Пароль</label>
+      <input type="password" id="passwordInput" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn" id="loginBtn" onclick="handleLogin()">Войти →</button>
+    <div class="login-error" id="loginError">Неверный пароль. Попробуйте ещё раз.</div>
+    <div class="attempts-left" id="attemptsLeft"></div>
+  </div>
+</div>
+
+<!-- ── Основной экран ── -->
+<div id="mainScreen">
+  <div class="top-bar">
+    <div class="badge"><span class="dot"></span> Авторизован</div>
+    <button class="logout-btn" onclick="handleLogout()">Выйти</button>
+  </div>
+
+  <h1>Запланировать пост</h1>
+  <p class="subtitle">Выберите канал и параметры — публикация произойдёт автоматически.</p>
+
+  <div class="card" style="width:100%">
+    <div class="tabs">
+      <div class="tab active" data-mode="once">Разовый пост</div>
+      <div class="tab" data-mode="recurring">Регулярно</div>
+    </div>
+
+    <form id="postForm">
+
+      <div class="field">
+        <label>Email аккаунта</label>
+        <input type="email" id="user_email" value="nebessnyy@gmail.com" required>
+      </div>
+
+      <div class="field">
+        <label>Канал Telegram</label>
+        <input type="text" id="channel_username" placeholder="@yourchannel" required>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>Ниша</label>
+          <select id="niche">
+            <option value="sport">⚽ Спорт</option>
+            <option value="crypto">💰 Крипта</option>
+            <option value="tech">💻 Технологии</option>
+            <option value="news">📰 Новости</option>
+            <option value="cinema" selected>🎬 Кино</option>
+            <option value="gaming">🎮 Игры</option>
+            <option value="food">🍕 Еда</option>
+            <option value="travel">✈️ Путешествия</option>
+            <option value="business">💼 Бизнес</option>
+            <option value="health">💪 Здоровье</option>
+            <option value="fashion">👗 Мода</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Формат</label>
+          <select id="format">
+            <option value="news">Новость</option>
+            <option value="top5" selected>Топ-5</option>
+            <option value="review">Обзор</option>
+            <option value="opinion">Мнение</option>
+            <option value="story">История</option>
+            <option value="tips">Советы</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Тема (опционально)</label>
+        <input type="text" id="topic" placeholder="ИИ найдёт актуальную тему сам">
+      </div>
+
+      <div class="field">
+        <label>Конкурент для анализа стиля (опционально)</label>
+        <input type="text" id="competitor" placeholder="@channel1">
+      </div>
+
+      <div class="field">
+        <label>Язык</label>
+        <select id="language">
+          <option value="ru" selected>🇷🇺 Русский</option>
+          <option value="uk">🇺🇦 Украинский</option>
+          <option value="en">🇬🇧 English</option>
+          <option value="de">🇩🇪 Deutsch</option>
+          <option value="es">🇪🇸 Español</option>
+        </select>
+      </div>
+
+      <div class="panel active" id="panel-once">
+        <div class="field">
+          <label>Дата и время публикации (UTC)</label>
+          <input type="datetime-local" id="scheduled_at">
+          <p class="hint">Варшава = UTC+2 летом. Текущее UTC: <span id="currentUtc"></span></p>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-recurring">
+        <div class="field">
+          <label>Время публикации (UTC)</label>
+          <input type="time" id="recurrence_time" value="09:00">
+          <p class="hint">09:00 UTC = 11:00 по Варшаве летом</p>
+        </div>
+        <div class="field">
+          <label>Дни недели</label>
+          <div class="days-grid">
+            <div class="day-btn selected" data-day="mon">Пн</div>
+            <div class="day-btn selected" data-day="tue">Вт</div>
+            <div class="day-btn selected" data-day="wed">Ср</div>
+            <div class="day-btn selected" data-day="thu">Чт</div>
+            <div class="day-btn selected" data-day="fri">Пт</div>
+            <div class="day-btn selected" data-day="sat">Сб</div>
+            <div class="day-btn selected" data-day="sun">Вс</div>
+          </div>
+          <div class="quick-days">
+            <span class="quick-day" data-preset="daily">Каждый день</span>
+            <span class="quick-day" data-preset="weekdays">Только будни</span>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn" id="submitBtn">⚡ Запланировать пост</button>
+      <div class="status" id="statusBox"></div>
+    </form>
+  </div>
+</div>
+
+<script>
+// ── Конфигурация защиты ──────────────────────────────────
+const SESSION_KEY  = 'postai_auth';
+const SESSION_TTL  = 8 * 60 * 60 * 1000; // 8 часов
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_TIME = 15 * 60 * 1000;     // 15 минут блокировки
+const ATTEMPTS_KEY = 'postai_attempts';
+
+// ── Хеш пароля (SHA-256) ─────────────────────────────────
+// Пароль хранится не в открытом виде, а как хеш
+// Замените значение ниже хешем вашего пароля
+// Текущий пароль: измените SCHEDULER_PASSWORD в Vercel env
+// и обновите хеш через: https://emn178.github.io/online-tools/sha256.html
+const PASSWORD_HASH = '__SCHEDULER_PASSWORD_HASH__';
+
+async function sha256(message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray  = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ── Проверка сессии при загрузке ────────────────────────
+window.addEventListener('load', () => {
+  const session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+  if (session && Date.now() - session.ts < SESSION_TTL) {
+    showMainScreen();
+  }
+  updateUtcClock();
+  setInterval(updateUtcClock, 30000);
+});
+
+// ── Логин ────────────────────────────────────────────────
+async function handleLogin() {
+  const loginBtn = document.getElementById('loginBtn');
+  const errorDiv = document.getElementById('loginError');
+  const attemptsDiv = document.getElementById('attemptsLeft');
+  const password = document.getElementById('passwordInput').value;
+
+  // Проверяем блокировку
+  const attemptsData = JSON.parse(localStorage.getItem(ATTEMPTS_KEY) || '{"count":0,"ts":0}');
+  if (attemptsData.count >= MAX_ATTEMPTS) {
+    const remaining = Math.ceil((LOCKOUT_TIME - (Date.now() - attemptsData.ts)) / 60000);
+    if (remaining > 0) {
+      errorDiv.textContent = `Слишком много попыток. Подождите ${remaining} мин.`;
+      errorDiv.style.display = 'block';
+      return;
+    } else {
+      localStorage.removeItem(ATTEMPTS_KEY);
+    }
+  }
+
+  loginBtn.disabled = true;
+  loginBtn.textContent = 'Проверяю...';
+
+  try {
+    const response = await fetch('/api/check-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+
+    const data = await response.json();
+
+    if (data.ok) {
+      // Сбрасываем счётчик попыток
+      localStorage.removeItem(ATTEMPTS_KEY);
+      // Сохраняем сессию
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ ts: Date.now() }));
+      showMainScreen();
+    } else {
+      // Увеличиваем счётчик неудачных попыток
+      const newAttempts = { count: attemptsData.count + 1, ts: Date.now() };
+      localStorage.setItem(ATTEMPTS_KEY, JSON.stringify(newAttempts));
+
+      const remaining = MAX_ATTEMPTS - newAttempts.count;
+      errorDiv.textContent = 'Неверный пароль.';
+      errorDiv.style.display = 'block';
+
+      if (remaining > 0) {
+        attemptsDiv.textContent = `Осталось попыток: ${remaining}`;
+      } else {
+        attemptsDiv.textContent = `Вход заблокирован на 15 минут`;
+      }
+    }
+  } catch {
+    errorDiv.textContent = 'Ошибка соединения. Попробуйте ещё раз.';
+    errorDiv.style.display = 'block';
+  }
+
+  loginBtn.disabled = false;
+  loginBtn.textContent = 'Войти →';
+}
+
+// Enter для входа
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('passwordInput')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') handleLogin();
+  });
+});
+
+function handleLogout() {
+  localStorage.removeItem(SESSION_KEY);
+  document.getElementById('mainScreen').classList.remove('visible');
+  document.getElementById('loginScreen').style.display = 'block';
+  document.getElementById('passwordInput').value = '';
+}
+
+function showMainScreen() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('mainScreen').classList.add('visible');
+}
+
+// ── Табы ────────────────────────────────────────────────
+let currentMode = 'once';
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentMode = tab.dataset.mode;
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById(`panel-${currentMode}`).classList.add('active');
+  });
+});
+
+// ── Дни недели ──────────────────────────────────────────
+document.querySelectorAll('.day-btn').forEach(btn => {
+  btn.addEventListener('click', () => btn.classList.toggle('selected'));
+});
+
+document.querySelectorAll('.quick-day').forEach(el => {
+  el.addEventListener('click', () => {
+    const weekdays = ['mon','tue','wed','thu','fri'];
+    document.querySelectorAll('.day-btn').forEach(btn => {
+      if (el.dataset.preset === 'daily') btn.classList.add('selected');
+      if (el.dataset.preset === 'weekdays') {
+        btn.classList.toggle('selected', weekdays.includes(btn.dataset.day));
+      }
+    });
+  });
+});
+
+// ── UTC часы ────────────────────────────────────────────
+function updateUtcClock() {
+  const el = document.getElementById('currentUtc');
+  if (el) el.textContent = new Date().toISOString().slice(11, 16) + ' UTC';
+}
+
+// ── Отправка формы ──────────────────────────────────────
+document.getElementById('postForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  // Проверяем сессию
+  const session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+  if (!session || Date.now() - session.ts >= SESSION_TTL) {
+    handleLogout();
+    return;
+  }
+
+  const submitBtn = document.getElementById('submitBtn');
+  const statusBox = document.getElementById('statusBox');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Сохраняю...';
+  statusBox.className = 'status';
+
+  const payload = {
+    user_email:       document.getElementById('user_email').value.trim(),
+    channel_username: document.getElementById('channel_username').value.trim(),
+    niche:            document.getElementById('niche').value,
+    format:           document.getElementById('format').value,
+    topic:            document.getElementById('topic').value.trim() || null,
+    competitor:       document.getElementById('competitor').value.trim() || null,
+    language:         document.getElementById('language').value,
+    mode:             currentMode,
+  };
+
+  if (currentMode === 'once') {
+    const dtValue = document.getElementById('scheduled_at').value;
+    if (!dtValue) {
+      showStatus('error', 'Укажите дату и время');
+      resetButton();
+      return;
+    }
+    payload.scheduled_at = new Date(dtValue).toISOString();
+  } else {
+    payload.recurrence_time = document.getElementById('recurrence_time').value;
+    const selected = [...document.querySelectorAll('.day-btn.selected')].map(b => b.dataset.day);
+    if (!selected.length) {
+      showStatus('error', 'Выберите хотя бы один день');
+      resetButton();
+      return;
+    }
+    payload.recurrence_days = selected.length === 7 ? 'daily' : selected.join(',');
+  }
+
+  try {
+    const res  = await fetch('/api/schedule-post', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Ошибка');
+    showStatus('success', currentMode === 'once'
+      ? '✅ Пост запланирован! Публикация произойдёт автоматически.'
+      : '✅ Регулярная публикация настроена!');
+    e.target.reset();
+  } catch (err) {
+    showStatus('error', '❌ ' + err.message);
+  }
+
+  resetButton();
+});
+
+function showStatus(type, text) {
+  const box = document.getElementById('statusBox');
+  box.textContent = text;
+  box.className = 'status show ' + type;
+}
+
+function resetButton() {
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = false;
+  btn.textContent = '⚡ Запланировать пост';
+}
+</script>
+</body>
+</html>
