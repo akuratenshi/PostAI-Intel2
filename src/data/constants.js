@@ -35,8 +35,8 @@ export const LANGS = [
 ];
 export const PLANS = [
   { pk: "p0", price: 0,  py: null, period: "",     badge: false, primary: false },
-  { pk: "p1", price: 19, py: 15,   period: "/мес", badge: true,  primary: true  },
-  { pk: "p2", price: 39, py: 31,   period: "/мес", badge: false, primary: false },
+  { pk: "p1", price: 19, py: 15,   period: "/мес", badge: false, primary: false },
+  { pk: "p2", price: 39, py: 31,   period: "/мес", badge: true,  primary: true  },
   { pk: "p3", price: 99, py: 79,   period: "/мес", badge: false, primary: false },
 ];
 export const UI_LANGS = ["en", "uk", "pl", "ru"];
