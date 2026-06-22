@@ -90,8 +90,8 @@ export function Paywall({ t, onClose }) {
           }}
         >
           {[
-            { pk: "p1", price: "$19", primary: true },
-            { pk: "p2", price: "$39", primary: false },
+            { pk: "p1", price: "$19", primary: false },
+            { pk: "p2", price: "$39", primary: true  },
           ].map((p, i) => (
             <div
               key={i}
