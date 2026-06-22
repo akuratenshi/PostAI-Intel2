@@ -9,6 +9,28 @@ const redis = new Redis({
 const FREE_LIMIT = 3;
 const ADMIN_EMAILS = ["nebessnyy@gmail.com", "v.crypto.t@gmail.com"];
 
+// ── Fingerprint устройства ────────────────────────────────
+// Создаём отпечаток из IP + User-Agent + Accept-Language
+// Даже при смене email — устройство остаётся тем же
+async function getDeviceFingerprint(req) {
+  const ip =
+    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+    req.headers["x-real-ip"] ||
+    req.socket?.remoteAddress ||
+    "unknown";
+
+  const userAgent  = req.headers["user-agent"]  || "unknown";
+  const acceptLang = req.headers["accept-language"] || "unknown";
+
+  // Комбинируем в одну строку и хешируем
+  const raw = `${ip}|${userAgent}|${acceptLang}`;
+  const encoder = new TextEncoder();
+  const data = encoder.encode(raw);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray  = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+}
+
 const SYSTEM_PROMPT = `You are a senior Social Media Marketing specialist with 10+ years of experience
 creating viral content for Telegram, Instagram, Facebook, and Threads.
 You have deep expertise in audience psychology, engagement mechanics,
@@ -258,14 +280,30 @@ export default async function handler(req, res) {
 
     const normalizedEmail = email.toLowerCase().trim();
     const isAdmin = ADMIN_EMAILS.includes(normalizedEmail);
-    const usageKey = `usage:${normalizedEmail}`;
 
+    // ── Проверка лимитов (email + fingerprint) ────────────
     if (!isAdmin) {
-      const used = Number((await redis.get(usageKey)) ?? 0);
+      const fingerprint   = await getDeviceFingerprint(req);
+      const emailKey       = `usage:${normalizedEmail}`;
+      const fingerprintKey = `usage:fp:${fingerprint}`;
+
+      // Проверяем оба ключа — email и устройство
+      const [usedByEmail, usedByDevice] = await Promise.all([
+        redis.get(emailKey).then(v => Number(v ?? 0)),
+        redis.get(fingerprintKey).then(v => Number(v ?? 0)),
+      ]);
+
+      const used = Math.max(usedByEmail, usedByDevice);
+
       if (used >= FREE_LIMIT) {
+        // Определяем причину блокировки
+        const reason = usedByDevice >= FREE_LIMIT && usedByEmail < FREE_LIMIT
+          ? "С этого устройства уже использованы все 3 бесплатных поста."
+          : "Вы использовали все 3 бесплатных поста.";
+
         return res.status(429).json({
           error: "free_limit_reached",
-          message: "Вы использовали все 3 бесплатных поста. Для продолжения оформите подписку.",
+          message: `${reason} Для продолжения оформите подписку.`,
           used,
           limit: FREE_LIMIT,
           remaining: 0,
@@ -334,42 +372,46 @@ export default async function handler(req, res) {
 
     let parsed = null;
     try {
-      // 1. Ищем JSON-блок внутри ```json ... ``` или ``` ... ```
       const fenceMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (fenceMatch) {
         parsed = JSON.parse(fenceMatch[1].trim());
       } else {
-        // 2. Ищем первый { и последний } — вырезаем JSON из любого окружающего текста
         const start = rawText.indexOf("{");
         const end = rawText.lastIndexOf("}");
         if (start !== -1 && end !== -1 && end > start) {
           parsed = JSON.parse(rawText.slice(start, end + 1));
         } else {
-          // 3. Пробуем весь текст как есть
           parsed = JSON.parse(rawText.trim());
         }
       }
     } catch (parseErr) {
-      // 4. Fallback: отдаём сырой текст
       parsed = { post: rawText };
     }
 
-    // ── Очистка артефактов цитирования из текста поста ────────────────────
     function cleanPost(text) {
       if (!text) return text;
       return text
-        // убираем <cite index="...">...</cite> — оставляем только содержимое
         .replace(/<cite[^>]*>([\s\S]*?)<\/cite>/g, "$1")
-        // убираем любые оставшиеся одиночные теги <cite ...> или </cite>
         .replace(/<\/?cite[^>]*>/g, "")
         .trim();
     }
 
     if (parsed.post) parsed.post = cleanPost(parsed.post);
 
+    // ── Увеличиваем счётчики (email + fingerprint) ────────
     let newCount = FREE_LIMIT;
     if (!isAdmin) {
-      newCount = await redis.incr(usageKey);
+      const fingerprint   = await getDeviceFingerprint(req);
+      const emailKey       = `usage:${normalizedEmail}`;
+      const fingerprintKey = `usage:fp:${fingerprint}`;
+
+      // Увеличиваем оба счётчика параллельно
+      const [newEmailCount] = await Promise.all([
+        redis.incr(emailKey),
+        redis.incr(fingerprintKey),
+      ]);
+
+      newCount = newEmailCount;
     }
 
     const remaining = isAdmin ? 999 : Math.max(0, FREE_LIMIT - newCount);
@@ -396,3 +438,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
+
