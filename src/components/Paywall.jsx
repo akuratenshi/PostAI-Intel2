@@ -156,7 +156,7 @@ export function Paywall({ t, onClose }) {
             rel="noreferrer"
             style={{ color: "var(--accent)", textDecoration: "none" }}
           >
-            @renellaice
+            @inkhaton
           </a>
         </p>
       </div>
