@@ -1,4 +1,4 @@
-export const TG = "https://t.me/renellaice";
+export const TG = "https://t.me/inkhaton";
 export const FREE_LIMIT = 1;
 export const NICHES = [
   { id: "games",    icon: "🎮", tk: "ng"  },
