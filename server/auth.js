@@ -6,7 +6,16 @@ export async function authenticate(req) {
  const secretKey=required('CLERK_SECRET_KEY');
  const authorizedParties=required('CLERK_AUTHORIZED_PARTIES').split(',').map(s=>s.trim()).filter(Boolean);
  let claims;
- try { claims=await verifyToken(token,{secretKey,authorizedParties}); } catch { throw new HttpError(401,'Invalid or expired session'); }
+ try {
+  claims = await verifyToken(token, { secretKey, authorizedParties });
+} catch (error) {
+  console.error('Clerk token verification failed', {
+    code: error?.code,
+    reason: error?.reason,
+    message: error?.message,
+  });
+  throw new HttpError(401, 'Invalid or expired session');
+}
  if(!claims.sub || !claims.sid || !authorizedParties.includes(claims.azp)) throw new HttpError(401,'Invalid session');
  const user=await createClerkClient({secretKey}).users.getUser(claims.sub);
  const primary=user.emailAddresses.find(e=>e.id===user.primaryEmailAddressId && e.verification?.status==='verified');
