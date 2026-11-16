@@ -8,10 +8,10 @@ import { NetworkIcon }   from "../components/NetworkIcon.jsx";
 import { NetworkSelect } from "../components/NetworkSelect.jsx";
 import { useUser } from "@clerk/clerk-react";
 import { usePostGenerator } from "../hooks/usePostGenerator.js";
-import { NICHES, FORMATS, NETWORKS, LANGS } from "../data/constants.js";
+import { NICHES, FORMATS, NETWORKS, LANGS, FREE_LIMIT } from "../data/constants.js";
 import { UI } from "../data/translations.js";
 
-const FREE_LIMIT = 1;
+
 
 function cleanPost(raw) {
   if (!raw) return raw;

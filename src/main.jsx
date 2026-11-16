@@ -3,7 +3,8 @@ import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
 import { ClerkProvider } from "@clerk/clerk-react";
 
-const PUBLISHABLE_KEY = "pk_test_aW4tYnVsbGRvZy00OS5jbGVyay5hY2NvdW50cy5kZXYk";
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+if (!PUBLISHABLE_KEY) throw new Error("Set VITE_CLERK_PUBLISHABLE_KEY in Vercel");
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

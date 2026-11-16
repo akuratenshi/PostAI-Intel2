@@ -6,6 +6,7 @@ export function CookieBanner() {
   useEffect(() => {
     const consent = localStorage.getItem("cookieConsent");
     if (!consent) setVisible(true);
+    if (consent === "accepted") window.gtag?.("consent", "update", {analytics_storage:"granted"});
   }, []);
 
   const accept = () => {

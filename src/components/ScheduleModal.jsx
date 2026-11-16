@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "@clerk/clerk-react";
 
 /**
  * Модалка планирования публикации.
@@ -6,6 +7,15 @@ import { useState, useEffect } from "react";
  * не нужно вводить @username каждый раз.
  */
 export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, onClose }) {
+  const { getToken } = useAuth();
+  const [challenge, setChallenge] = useState(null);
+  const apiFetch = async (url, options = {}) => {
+    const token = await getToken();
+    if (!token) throw new Error("Войдите в аккаунт");
+    const response = await fetch(url, {...options, headers: {...options.headers, Authorization: `Bearer ${token}`}});
+    if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || `HTTP ${response.status}`); }
+    return response;
+  };
   const [mode, setMode]               = useState("now"); // "now" | "once" | "recurring"
   const [channels, setChannels]       = useState([]);
   const [channelsLoading, setChannelsLoading] = useState(true);
@@ -32,7 +42,7 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
   useEffect(() => {
     if (!userEmail) { setChannelsLoading(false); return; }
 
-    fetch(`/api/user-channels?email=${encodeURIComponent(userEmail)}`)
+    apiFetch("/api/user-channels")
       .then((r) => r.json())
       .then((data) => {
         const list = data.channels || [];
@@ -56,15 +66,17 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
     const normalized = newChannel.trim().startsWith("@") ? newChannel.trim() : `@${newChannel.trim()}`;
 
     try {
-      const res  = await fetch("/api/user-channels", {
+      const res  = await apiFetch("/api/user-channels", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ user_email: userEmail, channel_username: normalized }),
+        body:    JSON.stringify({ channel_username: normalized, action: challenge ? "verify" : "challenge" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Ошибка добавления");
 
-      setChannels((prev) => [data.channel, ...prev]);
+      if (data.challenge) { setChallenge(data.challenge); setResult({ok:false,error:data.message}); return; }
+      setChallenge(null);
+      setChannels((prev) => [data.channel, ...prev.filter(c => c.channel_username !== data.channel.channel_username)]);
       setSelectedChannel(normalized);
       setNewChannel("");
       setAddingNew(false);
@@ -84,6 +96,7 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
       setResult({ ok: false, error: "Укажите дату и время" });
       return;
     }
+    if (net !== "telegram") { setResult({ok:false,error:"Автопубликация доступна только для Telegram"}); return; }
     if (mode === "recurring" && recDays.length === 0) {
       setResult({ ok: false, error: "Выберите хотя бы один день" });
       return;
@@ -94,7 +107,7 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
 
     if (mode === "now") {
       try {
-        const res  = await fetch("/api/publish-now", {
+        const res  = await apiFetch("/api/publish-now", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ channel_username: channel, post_text: post }),
@@ -117,7 +130,7 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
       format:    fmt,
       language:  pLang,
       competitor: comp || null,
-      platform:  net,
+      platform:  "telegram",
       mode,
       post_text: mode === "once" ? post : null,
     };
@@ -130,7 +143,7 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
     }
 
     try {
-      const res  = await fetch("/api/schedule-post", {
+      const res  = await apiFetch("/api/schedule-post", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify(payload),
@@ -213,7 +226,7 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
                           }}
                         >
                           <span style={{ fontSize: "14px", fontWeight: 500 }}>
-                            📢 {ch.channel_label || ch.channel_username}
+                            📢 {ch.channel_label || ch.channel_username}{!ch.verified_at ? " — подтвердите канал" : ""}
                           </span>
                           {selectedChannel === ch.channel_username && (
                             <span style={{ color: "var(--accent,#7c5cff)", fontSize: "16px" }}>✓</span>
@@ -237,11 +250,11 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
                       <input
                         placeholder="@yourchannel"
                         value={newChannel}
-                        onChange={(e) => setNewChannel(e.target.value)}
+                        onChange={(e) => { setNewChannel(e.target.value); setChallenge(null); }}
                         style={{ flex: 1 }}
                       />
                       <button type="button" className="btn-sm" onClick={handleAddChannel}>
-                        Сохранить
+                        {challenge ? "Проверить канал" : "Получить код"}
                       </button>
                       {channels.length > 0 && (
                         <button type="button" className="btn-sm" onClick={() => setAddingNew(false)}>
@@ -251,12 +264,13 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
                     </div>
                   )}
                   <p style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "6px" }}>
-                    Бот должен быть администратором канала с правом публикации.
+                    Бот должен быть администратором канала с правом публикации. Для старого неподтверждённого канала нажмите «Добавить новый канал» и укажите его username.
                   </p>
                 </>
               )}
             </div>
 
+            <p style={{fontSize:12, color:"var(--text-dim)"}}>{import.meta.env.VITE_SCHEDULER_CADENCE_HINT || "Очередь проверяется раз в сутки и обрабатывает одну публикацию за запуск. Точное время не гарантируется."} Публикация поддерживается только в Telegram.</p>
             {/* Переключатель режима */}
             <div style={{ display: "flex", background: "var(--bg3, #1c1c29)", borderRadius: "10px", padding: "4px", marginBottom: "18px" }}>
               {[
@@ -281,7 +295,7 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
 
             {mode === "once" && (
               <div style={{ marginBottom: "16px" }}>
-                <label className="label">Дата и время (UTC)</label>
+                <label className="label">Дата и время (часовой пояс вашего устройства)</label>
                 <input
                   type="datetime-local"
                   value={scheduledAt}
@@ -294,6 +308,7 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
               <>
                 <div style={{ marginBottom: "16px" }}>
                   <label className="label">Время публикации (UTC, ежедневно)</label>
+                  <p style={{fontSize:12}}>Время повторений — UTC. Публикация произойдёт при следующем запуске обработчика очереди.</p>
                   <input
                     type="time"
                     value={recTime}
@@ -328,7 +343,8 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
                 background: "rgba(255,92,122,0.12)", border: "1px solid rgba(255,92,122,0.3)",
                 color: "#ff5c7a", borderRadius: "9px", padding: "10px 14px", fontSize: "13px", marginBottom: "14px",
               }}>
-                ❌ {result.error}
+                {result.error}
+                {challenge && <><br /><code style={{userSelect:"all", overflowWrap:"anywhere"}}>{challenge}</code><br />После добавления кода в описание нажмите кнопку добавления канала ещё раз для проверки.</>}
               </div>
             )}
 

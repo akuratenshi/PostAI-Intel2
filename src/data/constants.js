@@ -1,5 +1,5 @@
 export const TG = "https://t.me/inkhaton";
-export const FREE_LIMIT = 1;
+export { FREE_LIMIT } from "../../shared/config.js";
 export const NICHES = [
   { id: "games",    icon: "🎮", tk: "ng"  },
   { id: "movies",   icon: "🎬", tk: "nm"  },

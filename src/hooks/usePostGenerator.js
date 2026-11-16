@@ -68,7 +68,7 @@ export function usePostGenerator() {
   // Загружаем счётчик при авторизации
   useEffect(() => {
     if (!email) return;
-    fetch(`/api/usage?email=${encodeURIComponent(email)}`)
+    getToken().then(token => fetch("/api/usage", {headers: {Authorization: `Bearer ${token}`}}))
       .then((r) => r.json())
       .then((data) => setUsed(data.used ?? 0))
       .catch(() => {});
@@ -111,7 +111,8 @@ export function usePostGenerator() {
     setImgs([]);
     setLoadSt(1); // "Ищем актуальные данные..."
 
-    const token = await getToken();
+    let token;
+    try { token = await getToken(); if (!token) throw new Error("Войдите в аккаунт"); } catch { setError("Войдите в аккаунт заново"); setLoading(false); return {success:false}; }
 
     // Картинки параллельно
     fetchImgs(nicheLabel + (topic ? " " + topic : ""), token);
@@ -126,7 +127,7 @@ export function usePostGenerator() {
 
       const data = await callApi(
         "/api/generate",
-        { prompt, maxTokens: 2000, email },
+        { prompt },
         token
       );
 
