@@ -5,6 +5,17 @@ import { FREE_LIMIT } from '../shared/config.js';
 
 export { FREE_LIMIT };
 
+function isAdmin(user) {
+  if (!user?.id) return false;
+
+  const adminIds = (process.env.ADMIN_USER_IDS || '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean);
+
+  return adminIds.includes(user.id);
+}
+
 export const redis = () => new Redis({
   url: required('POSTAI_REDIS_KV_REST_API_URL'),
   token: required('POSTAI_REDIS_KV_REST_API_TOKEN'),
@@ -40,6 +51,15 @@ export async function rateLimit(userId, kind, max = 20) {
 }
 
 export async function usage(user) {
+  if (isAdmin(user)) {
+    return {
+      used: 0,
+      limit: null,
+      remaining: null,
+      unlimited: true,
+    };
+  }
+
   const r = redis();
 
   const [current, legacy] = await Promise.all([
@@ -47,12 +67,16 @@ export async function usage(user) {
     r.get(`usage:${user.email}`),
   ]);
 
-  const used = Math.max(Number(current) || 0, Number(legacy) || 0);
+  const used = Math.max(
+    Number(current) || 0,
+    Number(legacy) || 0
+  );
 
   return {
     used,
     limit: FREE_LIMIT,
     remaining: Math.max(0, FREE_LIMIT - used),
+    unlimited: false,
   };
 }
 
@@ -65,6 +89,14 @@ redis.call('INCR',KEYS[3])
 return used+1`;
 
 export async function reserve(user, device = 'scheduled:' + user.id) {
+  if (isAdmin(user)) {
+    return {
+      used: 0,
+      unlimited: true,
+      refund: async () => 1,
+    };
+  }
+
   const r = redis();
   const keys = [
     `usage:v2:${user.id}`,
@@ -82,6 +114,7 @@ export async function reserve(user, device = 'scheduled:' + user.id) {
 
   return {
     used,
+    unlimited: false,
     refund: () => r.eval(
       "for _,k in ipairs(KEYS) do local n=tonumber(redis.call('GET',k) or '0'); if n>0 then redis.call('DECR',k) end end; return 1",
       [keys[0], keys[2]],
