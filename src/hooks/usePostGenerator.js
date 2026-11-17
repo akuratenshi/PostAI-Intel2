@@ -1,168 +1,236 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import { NETWORKS, LANGS, FREE_LIMIT } from "../data/constants.js";
 
-// ─── Вспомогательные ─────────────────────────────────────────────────────────
-
 async function callApi(path, body, token) {
   const res = await fetch(path, {
-    method:  "POST",
+    method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(body),
   });
+
+  const data = await res.json().catch(() => ({}));
+
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? `HTTP ${res.status}`);
-  }
-  return res.json();
-}
-
-/**
- * Строит структурированный промпт для нового API (один пост, JSON-ответ).
- */
-function buildPrompt({ nicheLabel, topic, formatLabel, fmt, networkLabel, langLabel, comp }) {
-  const lines = [
-    `Niche: ${nicheLabel}`,
-    `Topic: ${topic || "Choose the most trending topic in this niche right now"}`,
-    `Format: ${formatLabel || fmt}`,
-    `Platform: ${networkLabel}`,
-    `Output language: ${langLabel}`,
-  ];
-
-  if (comp) {
-    lines.push(`Competitor channels for style reference: ${comp}`);
+    throw new Error(data.error || `HTTP ${res.status}`);
   }
 
-  lines.push(
-    "",
-    "IMPORTANT:",
-    "1. First use web_search to find current, real information",
-    `2. Search globally, not limited to ${langLabel}-speaking content`,
-    `3. Write the final post in ${langLabel} language`,
-    "4. Generate ONE post only — not two, not three, exactly one",
-    "5. Return result as a raw JSON object — no markdown, no code fences, no extra text"
-  );
-
-  return lines.join("\n");
+  return data;
 }
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
+function readDraft(key) {
+  if (!key) return [];
+
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(key) || "null");
+
+    return Array.isArray(saved?.posts)
+      ? saved.posts.filter(post => typeof post === "string" && post.trim())
+      : [];
+  } catch {
+    return [];
+  }
+}
 
 export function usePostGenerator() {
   const { getToken } = useAuth();
-  const { user }     = useUser();
+  const { user } = useUser();
 
-  const [loading,   setLoading]   = useState(false);
-  const [loadSt,    setLoadSt]    = useState(0); // 0=idle 1=searching 2=writing
-  const [posts,     setPosts]     = useState([]);
-  const [imgs,      setImgs]      = useState([]);
-  const [used,      setUsed]      = useState(0);
-  const [warning,   setWarning]   = useState(null);
-  const [error,     setError]     = useState(null);
+  const userId = user?.id || null;
+  const storageKey = userId ? `postai:draft:v1:${userId}` : null;
+  const activeUser = useRef(userId);
+  activeUser.current = userId;
 
-  const email = user?.primaryEmailAddress?.emailAddress ?? null;
+  const busy = useRef(false);
+  const [loading, setLoading] = useState(false);
+  const [loadSt, setLoadSt] = useState(0);
+  const [draft, setDraft] = useState(() => ({
+    key: storageKey,
+    posts: readDraft(storageKey),
+  }));
+  const [used, setUsed] = useState(0);
+  const [warning, setWarning] = useState(null);
+  const [error, setError] = useState(null);
 
-  // Загружаем счётчик при авторизации
+  const posts = draft.key === storageKey ? draft.posts : [];
+
   useEffect(() => {
-    if (!email) return;
-    getToken().then(token => fetch("/api/usage", {headers: {Authorization: `Bearer ${token}`}}))
-      .then((r) => r.json())
-      .then((data) => setUsed(data.used ?? 0))
-      .catch(() => {});
-  }, [email]);
+    setDraft({
+      key: storageKey,
+      posts: readDraft(storageKey),
+    });
+    setUsed(0);
+    setWarning(null);
+    setError(null);
+  }, [storageKey]);
 
-  // Фоновая загрузка картинок (Unsplash)
-  const fetchImgs = async (query, token) => {
+  useEffect(() => {
+    if (!storageKey || draft.key !== storageKey) return;
+
     try {
-      const { keywords } = await callApi("/api/keywords", { query }, token);
-      const kw = encodeURIComponent(keywords);
-      setImgs(
-        [0, 1, 2].map(
-          (i) => `https://source.unsplash.com/800x450/?${kw}&sig=${Date.now() + i * 4321}`
-        )
-      );
+      if (draft.posts.length) {
+        sessionStorage.setItem(
+          storageKey,
+          JSON.stringify({ posts: draft.posts })
+        );
+      } else {
+        sessionStorage.removeItem(storageKey);
+      }
     } catch {
-      const kw = encodeURIComponent(query.split(" ").slice(0, 3).join(","));
-      setImgs(
-        [0, 1, 2].map(
-          (i) => `https://source.unsplash.com/800x450/?${kw}&sig=${Date.now() + i * 4321}`
-        )
-      );
+      setWarning("Не удалось сохранить пост в этой вкладке. Скопируйте текст.");
     }
+  }, [storageKey, draft]);
+
+  const setPosts = value => {
+    setDraft(previous => {
+      const current = previous.key === storageKey ? previous.posts : [];
+      const next = typeof value === "function" ? value(current) : value;
+
+      return {
+        key: storageKey,
+        posts: Array.isArray(next) ? next : [],
+      };
+    });
   };
 
-  // ─── Основная функция генерации ───────────────────────────────────────────
+  useEffect(() => {
+    if (!userId) return;
 
-  const generate = async ({ niche, nicheLabel, topic, fmt, net, pLang, comp, formatLabel }) => {
+    let cancelled = false;
+
+    async function loadUsage() {
+      try {
+        const token = await getToken();
+        if (!token) return;
+
+        const response = await fetch("/api/usage", {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = await response.json();
+
+        if (!cancelled && Number.isFinite(data.used)) {
+          setUsed(data.used);
+        }
+      } catch {
+        if (!cancelled) {
+          setWarning("Не удалось обновить лимит. Сервер проверит его при генерации.");
+        }
+      }
+    }
+
+    loadUsage();
+    return () => { cancelled = true; };
+  }, [userId, getToken]);
+
+  const generate = async ({
+    niche,
+    nicheLabel,
+    topic,
+    fmt,
+    net,
+    pLang,
+    comp,
+    formatLabel,
+  }) => {
+    if (busy.current) return { success: false };
     if (used >= FREE_LIMIT) return { limitReached: true };
 
-    if (!email) {
-      console.error("Email не найден — пользователь не авторизован");
+    if (!userId) {
+      setError("Войдите в аккаунт.");
       return { success: false };
     }
 
+    const requestUser = userId;
+    busy.current = true;
     setLoading(true);
+    setLoadSt(1);
     setError(null);
     setWarning(null);
-    setPosts([]);
-    setImgs([]);
-    setLoadSt(1); // "Ищем актуальные данные..."
-
-    let token;
-    try { token = await getToken(); if (!token) throw new Error("Войдите в аккаунт"); } catch { setError("Войдите в аккаунт заново"); setLoading(false); return {success:false}; }
-
-    // Картинки параллельно
-    fetchImgs(nicheLabel + (topic ? " " + topic : ""), token);
-
-    const networkLabel = NETWORKS.find((n) => n.id === net)?.label ?? net;
-    const langLabel    = LANGS.find((l) => l.id === pLang)?.label ?? pLang;
-
-    const prompt = buildPrompt({ nicheLabel, topic, formatLabel, fmt, networkLabel, langLabel, comp });
 
     try {
-      setLoadSt(2); // "Пишем пост..."
+      const token = await getToken();
+      if (!token) throw new Error("Sign in required");
 
-      const data = await callApi(
-        "/api/generate",
-        { prompt },
-        token
-      );
+      const networkLabel =
+        NETWORKS.find(item => item.id === net)?.label || net;
+      const langLabel =
+        LANGS.find(item => item.id === pLang)?.label || pLang;
 
-      // API возвращает JSON с полем `post` (и `text` для обратной совместимости)
-      const postText = data.post ?? data.text ?? "";
+      const prompt = [
+        `Niche: ${nicheLabel || niche}`,
+        `Topic: ${topic || "Choose a current topic in this niche"}`,
+        `Format: ${formatLabel || fmt}`,
+        `Platform: ${networkLabel}`,
+        `Output language: ${langLabel}`,
+        comp ? `Competitor channels: ${comp}` : "",
+        "",
+        "First use web_search to verify current information.",
+        "Generate exactly ONE post in the requested language.",
+        "Return one raw JSON object with the complete post in the post field.",
+        "No code fences or explanations outside JSON.",
+      ].filter(Boolean).join("\n");
 
-      if (!postText) throw new Error("empty_response");
+      setLoadSt(2);
 
-      // Всегда один пост
-      setPosts([postText]);
+      const data = await callApi("/api/generate", { prompt }, token);
 
-      if (data.usage) {
+      if (activeUser.current !== requestUser) {
+        return { success: false };
+      }
+
+      const postText = data.post ?? data.text;
+
+      if (typeof postText !== "string" || !postText.trim()) {
+        throw new Error("Empty generation response");
+      }
+
+      const nextPosts = [postText.trim()];
+
+      // Сохраняем сразу, до переключения на экран результата.
+      try {
+        sessionStorage.setItem(
+          storageKey,
+          JSON.stringify({ posts: nextPosts })
+        );
+      } catch {
+        setWarning("Пост создан, но не сохранён в браузере. Скопируйте текст.");
+      }
+
+      setPosts(nextPosts);
+
+      if (Number.isFinite(data.usage?.used)) {
         setUsed(data.usage.used);
-        if (data.usage.warning) setWarning(data.usage.warning);
       }
 
       return { success: true };
-
     } catch (err) {
+      if (activeUser.current !== requestUser) {
+        return { success: false };
+      }
+
       if (err.message === "free_limit_reached") {
         setUsed(FREE_LIMIT);
         return { limitReached: true };
       }
 
-      const msg =
-        err.message.includes("overloaded") || err.message.includes("503")
-          ? "Сервис перегружен. Попробуйте через минуту."
-          : "Ошибка соединения. Попробуйте снова.";
+      setError(
+        err.message === "Sign in required"
+          ? "Войдите в аккаунт заново."
+          : "Не удалось создать пост. Попробуйте позже."
+      );
 
-      setError(msg);
-      setPosts([]);
+      // При неудаче предыдущий готовый пост сохраняется.
       console.error("generate error:", err);
       return { success: false };
-
     } finally {
+      busy.current = false;
       setLoading(false);
       setLoadSt(0);
     }
@@ -172,7 +240,7 @@ export function usePostGenerator() {
     loading,
     loadSt,
     posts,
-    imgs,
+    imgs: [],
     used,
     warning,
     error,
