@@ -6,7 +6,7 @@ import { useAuth } from "@clerk/clerk-react";
  * Каналы пользователя сохраняются и подгружаются автоматически —
  * не нужно вводить @username каждый раз.
  */
-export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, onClose }) {
+export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, onClose, photoData = null }) {
   const { getToken } = useAuth();
   const [challenge, setChallenge] = useState(null);
   const [tasks, setTasks] = useState([]);
@@ -120,6 +120,15 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
 
   const handleSubmit = async () => {
     const channel = selectedChannel;
+    if (saving) return;
+    if (mode !== "recurring" && (!post?.trim() || post.length > (photoData ? 900 : 4096))) {
+      setResult({ ok: false, error: photoData ? "Сократите подпись до 900 символов перед публикацией" : "Проверьте длину текста" });
+      return;
+    }
+    if (photoData && mode === "recurring") {
+      setResult({ ok: false, error: "Свое фото пока доступно для публикации сразу или разовой публикации. Для регулярной задачи удалите фото." });
+      return;
+    }
 
     if (!channel) {
       setResult({ ok: false, error: "Выберите или добавьте канал" });
@@ -143,7 +152,7 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
         const res  = await apiFetch("/api/publish-now", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ channel_username: channel, post_text: post }),
+          body: JSON.stringify({ channel_username: channel, post_text: post, photo_data: photoData }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Ошибка публикации");
@@ -157,6 +166,7 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
     }
 
     const payload = {
+      photo_data: photoData,
       user_email:       userEmail,
       channel_username: channel,
       niche,
@@ -326,6 +336,10 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
             </div>
 
             <p style={{fontSize:12, color:"var(--text-dim)"}}>Очередь проверяется каждую минуту. За одну проверку обрабатывается один пост. Если несколько постов запланированы на одно время, они публикуются по очереди. Возможна задержка. Публикация поддерживается только в Telegram.</p>
+            {photoData && <div style={{ marginBottom: "16px" }}>
+              <img src={photoData} alt="Фото публикации" style={{ width: "100%", maxHeight: "180px", objectFit: "contain", borderRadius: "8px" }} />
+              <p style={{ fontSize: "12px" }}>Ваше фото и подпись — одним сообщением. Доступно «Сразу» и «Разовый».</p>
+            </div>}
             {/* Переключатель режима */}
             <div style={{ display: "flex", background: "var(--bg3, #1c1c29)", borderRadius: "10px", padding: "4px", marginBottom: "18px" }}>
               {[
@@ -419,8 +433,4 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
     </div>
   );
 }
-
-
-
-
 

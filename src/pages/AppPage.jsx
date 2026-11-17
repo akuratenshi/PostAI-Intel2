@@ -14,6 +14,7 @@ import {
   LANGS,
   FREE_LIMIT,
 } from "../data/constants.js";
+import { PhotoUpload } from "../components/PhotoUpload.jsx";
 import { UI } from "../data/translations.js";
 
 function readSettings(key) {
@@ -79,6 +80,8 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
     typeof saved.comp === "string" ? saved.comp : ""
   );
 
+  const [photos, setPhotos] = useState({});
+  const [editedPosts, setEditedPosts] = useState({});
   const [copied, setCopied] = useState(null);
   const [pw, setPw] = useState(false);
   const [scheduleFor, setScheduleFor] = useState(null);
@@ -160,12 +163,14 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
       return;
     }
 
-    if (result?.success) setStep(2);
+    if (result?.success) { setPhotos({}); setEditedPosts({}); setStep(2); }
   };
 
   const startNew = () => {
     setScheduleFor(null);
     setPosts([]);
+    setPhotos({});
+    setEditedPosts({});
     setNiche(null);
     setCustom("");
     setTopic("");
@@ -582,7 +587,7 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
                   <div style={{ display: "flex", gap: "8px" }}>
                     <button
                       className="btn-sm"
-                      onClick={() => copyPost(post, index)}
+                      onClick={() => copyPost(editedPosts[index] ?? post, index)}
                     >
                       {copied === index ? t.s2cd : t.s2c}
                     </button>
@@ -599,6 +604,19 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
                 </div>
 
                 <div style={{ padding: "16px" }}>
+                  <PhotoUpload value={photos[index] || null} onChange={value => setPhotos(prev => ({ ...prev, [index]: value }))} />
+                  <label className="label">Текст публикации</label>
+                  <textarea
+                    value={editedPosts[index] ?? post}
+                    onChange={event => setEditedPosts(prev => ({ ...prev, [index]: event.target.value }))}
+                    rows={10}
+                    style={{ width: "100%", boxSizing: "border-box", resize: "vertical", lineHeight: 1.7 }}
+                  />
+                  <p style={{ fontSize: "12px", color: (editedPosts[index] ?? post).length > (photos[index] ? 900 : 4096) ? "#F76E6E" : "var(--text-dim)" }}>
+                    {(editedPosts[index] ?? post).length} / {photos[index] ? 900 : 4096} символов.
+                    {photos[index] ? " Фото и текст будут отправлены одним сообщением. Сократите длинный текст вручную." : " Можно загрузить своё фото без списания ИИ-кредитов."}
+                  </p>
+                  <details style={{ marginTop: "10px" }}><summary>Предпросмотр текста</summary>
                   <pre
                     style={{
                       fontFamily: "'Manrope',sans-serif",
@@ -609,8 +627,9 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
                       wordBreak: "break-word",
                     }}
                   >
-                    {post.trim()}
+                    {(editedPosts[index] ?? post).trim()}
                   </pre>
+                  </details>
                 </div>
               </div>
             ))}
@@ -620,7 +639,8 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
 
       {scheduleFor !== null && readyPosts[scheduleFor] && (
         <ScheduleModal
-          post={readyPosts[scheduleFor]}
+          post={editedPosts[scheduleFor] ?? readyPosts[scheduleFor]}
+          photoData={photos[scheduleFor] || null}
           niche={niche}
           fmt={fmt}
           net={net}
@@ -633,4 +653,3 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
     </div>
   );
 }
-
