@@ -270,7 +270,7 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
               )}
             </div>
 
-            <p style={{fontSize:12, color:"var(--text-dim)"}}>{import.meta.env.VITE_SCHEDULER_CADENCE_HINT || "Очередь проверяется раз в сутки и обрабатывает одну публикацию за запуск. Точное время не гарантируется."} Публикация поддерживается только в Telegram.</p>
+            <p style={{fontSize:12, color:"var(--text-dim)"}}>Очередь проверяется каждую минуту. За одну проверку обрабатывается один пост. Если несколько постов запланированы на одно время, они публикуются по очереди. Возможна задержка. Публикация поддерживается только в Telegram.</p>
             {/* Переключатель режима */}
             <div style={{ display: "flex", background: "var(--bg3, #1c1c29)", borderRadius: "10px", padding: "4px", marginBottom: "18px" }}>
               {[
@@ -364,5 +364,7 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
     </div>
   );
 }
+
+
 
 
