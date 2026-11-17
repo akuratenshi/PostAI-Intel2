@@ -11,11 +11,5 @@
       "memory": 256,
       "maxDuration": 60
     }
-  },
-  "crons": [
-    {
-      "path": "/api/publish-scheduled",
-      "schedule": "0 9 * * *"
-    }
-  ]
+  }
 }
