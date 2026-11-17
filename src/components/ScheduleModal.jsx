@@ -9,6 +9,10 @@ import { useAuth } from "@clerk/clerk-react";
 export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, onClose }) {
   const { getToken } = useAuth();
   const [challenge, setChallenge] = useState(null);
+  const [tasks, setTasks] = useState([]);
+  const [tasksLoading, setTasksLoading] = useState(true);
+  const [tasksError, setTasksError] = useState("");
+  const [cancelling, setCancelling] = useState(null);
   const apiFetch = async (url, options = {}) => {
     const token = await getToken();
     if (!token) throw new Error("Войдите в аккаунт");
@@ -53,6 +57,35 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
       .catch(() => setAddingNew(true))
       .finally(() => setChannelsLoading(false));
   }, [userEmail]);
+
+  const loadTasks = async () => {
+    setTasksLoading(true);
+    setTasksError("");
+    try {
+      const response = await apiFetch("/api/schedule-post", { cache: "no-store" });
+      const data = await response.json();
+      setTasks(Array.isArray(data.posts) ? data.posts : []);
+    } catch (err) { setTasksError(err.message); }
+    finally { setTasksLoading(false); }
+  };
+
+  useEffect(() => { loadTasks(); }, [userEmail]);
+
+  const cancelTask = async (task) => {
+    if (cancelling) return;
+    if (!window.confirm("Отключить эту задачу? Она будет удалена из очереди. Уже опубликованные посты останутся в Telegram.")) return;
+    setCancelling(task.id);
+    setTasksError("");
+    try {
+      await apiFetch("/api/schedule-post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel", id: String(task.id) }),
+      });
+      setTasks(prev => prev.filter(item => item.id !== task.id));
+    } catch (err) { setTasksError(err.message); }
+    finally { setCancelling(null); }
+  };
 
   const toggleDay = (id) => {
     setRecDays((prev) =>
@@ -203,6 +236,28 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
                 ×
               </button>
             </div>
+
+            <section style={{ marginBottom: "20px", borderBottom: "1px solid var(--border)", paddingBottom: "16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", alignItems: "center" }}>
+                <strong style={{ fontSize: "14px" }}>Мои запланированные публикации</strong>
+                <button type="button" className="btn-sm" onClick={loadTasks} disabled={tasksLoading}>Обновить</button>
+              </div>
+              {tasksLoading ? <p>Загрузка...</p> : tasks.length === 0 && !tasksError ? <p style={{ fontSize: "12px", color: "var(--text-dim)" }}>Активных задач нет.</p> : null}
+              {tasks.map(task => (
+                <div key={task.id} style={{ marginTop: "10px", padding: "10px", background: "var(--bg3)", borderRadius: "8px", fontSize: "13px" }}>
+                  <strong>{task.channel_username}</strong>
+                  <div>{task.is_recurring ? "Регулярная публикация" : "Разовая публикация"}</div>
+                  <div>{new Date(task.scheduled_at).toLocaleString()} (время устройства)</div>
+                  <div style={{ margin: "6px 0" }}>
+                    {({ pending: "Ожидает запуска", processing: "Подготавливается", publishing: "Отправляется", unknown: "Результат отправки неизвестен — проверьте канал" })[task.status] || task.status}
+                  </div>
+                  {task.status === "pending" && <button type="button" className="btn-sm" disabled={cancelling !== null} onClick={() => cancelTask(task)}>
+                    {cancelling === task.id ? "Отключаю..." : "Отключить"}
+                  </button>}
+                </div>
+              ))}
+              {tasksError && <p role="alert" style={{ color: "#ff5c7a", fontSize: "13px" }}>{tasksError}</p>}
+            </section>
 
             {/* ── Выбор канала ── */}
             <div style={{ marginBottom: "18px" }}>
@@ -364,6 +419,7 @@ export function ScheduleModal({ post, niche, fmt, net, pLang, comp, userEmail, o
     </div>
   );
 }
+
 
 
 
