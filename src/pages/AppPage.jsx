@@ -1,143 +1,334 @@
-import { useState } from "react";
-import { Logo }      from "../components/Logo.jsx";
-import { Steps }     from "../components/Steps.jsx";
-import { PostImage } from "../components/PostImage.jsx";
-import { Paywall }   from "../components/Paywall.jsx";
-import { ScheduleModal } from "../components/ScheduleModal.jsx";
-import { NetworkIcon }   from "../components/NetworkIcon.jsx";
-import { NetworkSelect } from "../components/NetworkSelect.jsx";
+import { useState, useEffect } from "react";
 import { useUser } from "@clerk/clerk-react";
+import { Logo } from "../components/Logo.jsx";
+import { Steps } from "../components/Steps.jsx";
+import { Paywall } from "../components/Paywall.jsx";
+import { ScheduleModal } from "../components/ScheduleModal.jsx";
+import { NetworkIcon } from "../components/NetworkIcon.jsx";
+import { NetworkSelect } from "../components/NetworkSelect.jsx";
 import { usePostGenerator } from "../hooks/usePostGenerator.js";
-import { NICHES, FORMATS, NETWORKS, LANGS, FREE_LIMIT } from "../data/constants.js";
+import {
+  NICHES,
+  FORMATS,
+  NETWORKS,
+  LANGS,
+  FREE_LIMIT,
+} from "../data/constants.js";
 import { UI } from "../data/translations.js";
 
+function readSettings(key) {
+  if (!key) return {};
 
+  try {
+    const value = JSON.parse(sessionStorage.getItem(key) || "{}");
 
-function cleanPost(raw) {
-  if (!raw) return raw;
-  const lines = raw.split("\n");
-  const metaPatterns = [
-    /помогу тебе/i, /найду/i, /создаю\s+\d/i, /варианта? поста/i,
-    /актуальн/i, /на основе этой информации/i, /^—+$/, /^-{2,}$/, /^_{2,}$/,
-  ];
-  let startIdx = 0;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    const isMeta = metaPatterns.some((re) => re.test(line));
-    if (isMeta) { startIdx = i + 1; } else { break; }
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value
+      : {};
+  } catch {
+    return {};
   }
-  const summaryPatterns = [
-    /все\s+\d+\s+пост/i, /готов[ыа]\s+к\s+публикаци/i,
-    /\*\*пост\s*[1-9]\*\*\s*[–—-]/i, /пост\s*[1-9]\s*[–—-]/i,
-  ];
-  let endIdx = lines.length;
-  for (let i = lines.length - 1; i >= startIdx; i--) {
-    const line = lines[i].trim();
-    if (!line || line.match(/^[—\-_]+$/)) { continue; }
-    const isSummary = summaryPatterns.some((re) => re.test(line));
-    if (isSummary) {
-      let sepIdx = i;
-      for (let j = i - 1; j >= startIdx; j--) {
-        if (lines[j].trim().match(/^[—\-_*]+$/) || !lines[j].trim()) { sepIdx = j; } else { break; }
-      }
-      endIdx = sepIdx;
-      break;
-    } else { break; }
-  }
-  return lines.slice(startIdx, endIdx).join("\n").trim() || raw.trim();
 }
 
+const fieldStyle = { marginBottom: "18px" };
+
+const titleStyle = {
+  fontFamily: "'Syne',sans-serif",
+  fontSize: "24px",
+  fontWeight: 700,
+  marginBottom: "6px",
+};
+
 export function AppPage({ uiLang, onBack, step, onStepChange }) {
-  const t = UI[uiLang];
+  const { user } = useUser();
+  const settingsKey = user?.id
+    ? `postai:settings:v1:${user.id}`
+    : null;
+
+  const [saved] = useState(() => readSettings(settingsKey));
+  const t = UI[uiLang] || UI.en;
   const setStep = onStepChange;
 
-  const [niche,  setNiche]  = useState(null);
-  const [custom, setCustom] = useState("");
-  const [topic,  setTopic]  = useState("");
-  const [fmt,    setFmt]    = useState("top5");
-  const [net,    setNet]    = useState("telegram");
-  const [pLang,  setPLang]  = useState(uiLang);
-  const [comp,   setComp]   = useState("");
+  const [niche, setNiche] = useState(
+    () => NICHES.some(item => item.id === saved.niche)
+      ? saved.niche
+      : null
+  );
+  const [custom, setCustom] = useState(
+    typeof saved.custom === "string" ? saved.custom : ""
+  );
+  const [topic, setTopic] = useState(
+    typeof saved.topic === "string" ? saved.topic : ""
+  );
+  const [fmt, setFmt] = useState(
+    () => FORMATS.some(item => item.id === saved.fmt)
+      ? saved.fmt
+      : "top5"
+  );
+  const [net, setNet] = useState(
+    () => NETWORKS.some(item => item.id === saved.net)
+      ? saved.net
+      : "telegram"
+  );
+  const [pLang, setPLang] = useState(
+    () => LANGS.some(item => item.id === saved.pLang)
+      ? saved.pLang
+      : uiLang
+  );
+  const [comp, setComp] = useState(
+    typeof saved.comp === "string" ? saved.comp : ""
+  );
+
   const [copied, setCopied] = useState(null);
-  const [pw,     setPw]     = useState(false);
+  const [pw, setPw] = useState(false);
   const [scheduleFor, setScheduleFor] = useState(null);
+  const [settingsWarning, setSettingsWarning] = useState("");
 
-  const { user } = useUser();
+  const {
+    loading,
+    loadSt,
+    posts,
+    used,
+    generate,
+    setPosts,
+    error,
+    warning,
+  } = usePostGenerator();
+
   const userEmail = user?.primaryEmailAddress?.emailAddress || "";
-  const { loading, loadSt, posts, imgs, used, generate, setPosts } = usePostGenerator();
 
-  const nicheObj      = NICHES.find((n) => n.id === niche);
-  const nicheLabel    = niche === "custom" ? custom : nicheObj ? t[nicheObj.tk] : "";
-  const currentNetwork = NETWORKS.find((n) => n.id === net);
-  const cleanedPosts  = posts.map(cleanPost);
+  useEffect(() => {
+    if (!settingsKey) return;
 
-  const cp = (txt, i) => {
-    navigator.clipboard.writeText(txt.trim());
-    setCopied(i);
-    setTimeout(() => setCopied(null), 2000);
+    try {
+      sessionStorage.setItem(
+        settingsKey,
+        JSON.stringify({ niche, custom, topic, fmt, net, pLang, comp })
+      );
+      setSettingsWarning("");
+    } catch {
+      setSettingsWarning(
+        "Не удалось сохранить настройки в этой вкладке."
+      );
+    }
+  }, [settingsKey, niche, custom, topic, fmt, net, pLang, comp]);
+
+  const nicheObj = NICHES.find(item => item.id === niche);
+  const nicheLabel = niche === "custom"
+    ? custom
+    : nicheObj
+      ? t[nicheObj.tk]
+      : "";
+
+  const currentNetwork = NETWORKS.find(item => item.id === net);
+  const readyPosts = posts.filter(
+    post => typeof post === "string" && post.trim()
+  );
+
+  const copyPost = async (post, index) => {
+    try {
+      await navigator.clipboard.writeText(post.trim());
+      setCopied(index);
+      setTimeout(() => setCopied(null), 2000);
+    } catch {
+      setSettingsWarning(
+        "Не удалось скопировать автоматически. Выделите и скопируйте текст."
+      );
+    }
   };
 
   const handleGenerate = async () => {
-    if (!niche) return;
-    const formatLabel = t[FORMATS.find((f) => f.id === fmt)?.tk] || fmt;
-    const result = await generate({ niche, nicheLabel, topic, fmt, net, pLang, comp, formatLabel });
-    if (result?.limitReached) { setPw(true); return; }
-    if (result?.success)       setStep(2);
+    if (!niche || loading) return;
+    if (niche === "custom" && !custom.trim()) return;
+
+    const formatLabel =
+      t[FORMATS.find(item => item.id === fmt)?.tk] || fmt;
+
+    const result = await generate({
+      niche,
+      nicheLabel,
+      topic,
+      fmt,
+      net,
+      pLang,
+      comp,
+      formatLabel,
+    });
+
+    if (result?.limitReached) {
+      setPw(true);
+      return;
+    }
+
+    if (result?.success) setStep(2);
+  };
+
+  const startNew = () => {
+    setScheduleFor(null);
+    setPosts([]);
+    setNiche(null);
+    setCustom("");
+    setTopic("");
+    setComp("");
+    setStep(0);
   };
 
   return (
     <div style={{ minHeight: "100vh", padding: "20px 16px" }}>
-
       {pw && <Paywall t={t} onClose={() => setPw(false)} />}
 
-      {/* Top bar */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", maxWidth: "760px", margin: "0 auto 28px" }}>
-        <button onClick={onBack} style={{ background: "none", border: "none", color: "var(--text-dim)", fontSize: "14px", cursor: "pointer" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          maxWidth: "760px",
+          margin: "0 auto 28px",
+          gap: "12px",
+        }}
+      >
+        <button
+          onClick={onBack}
+          style={{
+            background: "none",
+            border: "none",
+            color: "var(--text-dim)",
+            fontSize: "14px",
+            cursor: "pointer",
+          }}
+        >
           {t.back}
         </button>
-        <div onClick={onBack} style={{ cursor: "pointer" }} title="На главную">
+
+        <button
+          onClick={onBack}
+          title="На главную"
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
           <Logo size={26} />
-        </div>
+        </button>
+
         <div
           onClick={() => used >= FREE_LIMIT && setPw(true)}
           style={{
-            fontSize: "12px", padding: "5px 12px", borderRadius: "20px",
+            fontSize: "12px",
+            padding: "5px 12px",
+            borderRadius: "20px",
             cursor: used >= FREE_LIMIT ? "pointer" : "default",
-            border: `1px solid ${used >= FREE_LIMIT ? "rgba(247,110,110,0.4)" : "var(--border)"}`,
-            background: used >= FREE_LIMIT ? "rgba(247,110,110,0.1)" : "var(--bg3)",
-            color: used >= FREE_LIMIT ? "#F76E6E" : "var(--text-dim)",
+            border: "1px solid var(--border)",
+            background: "var(--bg3)",
+            color: used >= FREE_LIMIT
+              ? "#F76E6E"
+              : "var(--text-dim)",
           }}
         >
-          {used >= FREE_LIMIT ? t.limit_buy : `${t.free_left} ${FREE_LIMIT - used} ${t.of} ${FREE_LIMIT}`}
+          {used >= FREE_LIMIT
+            ? t.limit_buy
+            : `${t.free_left} ${Math.max(0, FREE_LIMIT - used)} ${t.of} ${FREE_LIMIT}`}
         </div>
       </div>
 
       <div style={{ maxWidth: "760px", margin: "0 auto" }}>
         <Steps current={step} labels={[t.sn, t.ss, t.sr]} />
 
-        {/* ── STEP 0 ── */}
+        {error && (
+          <p role="alert" style={{ color: "#F76E6E", margin: "16px 0" }}>
+            {error}
+          </p>
+        )}
+
+        {(warning || settingsWarning) && (
+          <p
+            role="status"
+            style={{ color: "var(--text-mid)", margin: "16px 0" }}
+          >
+            {warning || settingsWarning}
+          </p>
+        )}
+
+        {step !== 2 && readyPosts.length > 0 && (
+          <button
+            className="btn-sm"
+            style={{ marginBottom: "20px" }}
+            onClick={() => setStep(2)}
+          >
+            Открыть сохранённый пост
+          </button>
+        )}
+
         {step === 0 && (
           <div className="fi">
-            <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: "24px", fontWeight: 700, marginBottom: "6px" }}>{t.s0t}</h2>
-            <p style={{ color: "var(--text-dim)", fontSize: "14px", marginBottom: "24px" }}>{t.s0s}</p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(170px,1fr))", gap: "10px", marginBottom: "20px" }}>
-              {NICHES.map((n) => (
-                <div key={n.id} className={`niche-card ${niche === n.id ? "active" : ""}`} onClick={() => setNiche(n.id)}>
-                  <div style={{ fontSize: "24px", marginBottom: "8px" }}>{n.icon}</div>
-                  <div style={{ fontWeight: 600, fontSize: "14px", marginBottom: "4px", color: niche === n.id ? "var(--accent)" : "var(--text)" }}>
-                    {t[n.tk]}
+            <h2 style={titleStyle}>{t.s0t}</h2>
+
+            <p
+              style={{
+                color: "var(--text-dim)",
+                fontSize: "14px",
+                marginBottom: "24px",
+              }}
+            >
+              {t.s0s}
+            </p>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill,minmax(170px,1fr))",
+                gap: "10px",
+                marginBottom: "20px",
+              }}
+            >
+              {NICHES.map(item => (
+                <div
+                  key={item.id}
+                  className={`niche-card ${niche === item.id ? "active" : ""}`}
+                  onClick={() => setNiche(item.id)}
+                >
+                  <div style={{ fontSize: "24px", marginBottom: "8px" }}>
+                    {item.icon}
                   </div>
-                  <div style={{ fontSize: "12px", color: "var(--text-dim)", lineHeight: 1.4 }}>{t[n.tk + "d"]}</div>
+
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: "14px",
+                      marginBottom: "4px",
+                      color: niche === item.id
+                        ? "var(--accent)"
+                        : "var(--text)",
+                    }}
+                  >
+                    {t[item.tk]}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--text-dim)",
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {t[item.tk + "d"]}
+                  </div>
                 </div>
               ))}
             </div>
+
             {niche === "custom" && (
-              <div style={{ marginBottom: "16px" }} className="fi">
+              <div style={fieldStyle}>
                 <label className="label">{t.s0cl}</label>
-                <input placeholder={t.s0cp} value={custom} onChange={(e) => setCustom(e.target.value)} />
+                <input
+                  placeholder={t.s0cp}
+                  value={custom}
+                  onChange={event => setCustom(event.target.value)}
+                />
               </div>
             )}
+
             <button
               className="btn-primary"
               style={{ width: "100%", padding: "15px", fontSize: "15px" }}
@@ -149,42 +340,79 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
           </div>
         )}
 
-        {/* ── STEP 1 ── */}
         {step === 1 && (
           <div className="fi">
-            <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: "24px", fontWeight: 700, marginBottom: "6px" }}>
-              {nicheObj?.icon} {nicheLabel}
+            <h2 style={titleStyle}>
+              {nicheObj?.icon} {nicheLabel || "Выберите тему"}
             </h2>
-            <p style={{ color: "var(--text-dim)", fontSize: "14px", marginBottom: "24px" }}>{t.s1s}</p>
 
-            <div style={{ marginBottom: "18px" }}>
+            <p
+              style={{
+                color: "var(--text-dim)",
+                fontSize: "14px",
+                marginBottom: "24px",
+              }}
+            >
+              {t.s1s}
+            </p>
+
+            <div style={fieldStyle}>
               <label className="label">{t.s1tl}</label>
-              <input placeholder={t.s1tl + "..."} value={topic} onChange={(e) => setTopic(e.target.value)} />
-              <p style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "6px" }}>{t.s1th}</p>
+              <input
+                placeholder={t.s1tl + "..."}
+                value={topic}
+                onChange={event => setTopic(event.target.value)}
+              />
+              <p
+                style={{
+                  fontSize: "12px",
+                  color: "var(--text-dim)",
+                  marginTop: "6px",
+                }}
+              >
+                {t.s1th}
+              </p>
             </div>
 
-            <div style={{ marginBottom: "18px" }}>
+            <div style={fieldStyle}>
               <label className="label">{t.s1fl}</label>
+
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                {FORMATS.map((f) => (
-                  <div key={f.id} className={`chip ${fmt === f.id ? "active" : ""}`} onClick={() => setFmt(f.id)}>
-                    {t[f.tk] || f.id}
+                {FORMATS.map(item => (
+                  <div
+                    key={item.id}
+                    className={`chip ${fmt === item.id ? "active" : ""}`}
+                    onClick={() => setFmt(item.id)}
+                  >
+                    {t[item.tk] || item.id}
                   </div>
                 ))}
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "18px" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
+                gap: "14px",
+                marginBottom: "18px",
+              }}
+            >
               <div>
                 <label className="label">{t.s1nl}</label>
-                {/* Кастомный дропдаун с иконками */}
                 <NetworkSelect value={net} onChange={setNet} />
               </div>
+
               <div>
                 <label className="label">{t.s1ll}</label>
-                <select value={pLang} onChange={(e) => setPLang(e.target.value)}>
-                  {LANGS.map((l) => (
-                    <option key={l.id} value={l.id}>{l.label}</option>
+                <select
+                  value={pLang}
+                  onChange={event => setPLang(event.target.value)}
+                >
+                  {LANGS.map(item => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -192,82 +420,195 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
 
             <div style={{ marginBottom: "24px" }}>
               <label className="label">{t.s1cl}</label>
-              <input placeholder={t.s1cp} value={comp} onChange={(e) => setComp(e.target.value)} />
+              <input
+                placeholder={t.s1cp}
+                value={comp}
+                onChange={event => setComp(event.target.value)}
+              />
             </div>
 
             <button
               className="btn-primary"
               style={{ width: "100%", padding: "15px", fontSize: "15px" }}
               onClick={handleGenerate}
-              disabled={loading}
+              disabled={
+                loading ||
+                !niche ||
+                (niche === "custom" && !custom.trim())
+              }
             >
               {loading ? (
-                <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
-                  <span className="spinner" />{t.s1gi}
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "10px",
+                  }}
+                >
+                  <span className="spinner" />
+                  {t.s1gi}
                 </span>
               ) : t.s1g}
             </button>
 
             {loading && (
               <div style={{ marginTop: "16px" }}>
-                {[t.s1p1, t.s1p2].map((s, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 0", fontSize: "13px", color: loadSt > i + 1 ? "var(--accent)" : "var(--text-dim)" }}>
-                    <span>{loadSt > i + 1 ? "✓" : <span className="spinner" style={{ width: "12px", height: "12px" }} />}</span>
-                    {s}
+                {[t.s1p1, t.s1p2].map((label, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      padding: "8px 0",
+                      fontSize: "13px",
+                      color: loadSt > index + 1
+                        ? "var(--accent)"
+                        : "var(--text-dim)",
+                    }}
+                  >
+                    {loadSt > index + 1 ? (
+                      <span>✓</span>
+                    ) : (
+                      <span
+                        className="spinner"
+                        style={{ width: "12px", height: "12px" }}
+                      />
+                    )}
+                    {label}
                   </div>
                 ))}
               </div>
             )}
 
-            <button className="btn-ghost" style={{ width: "100%", marginTop: "12px" }} onClick={() => setStep(0)}>
+            <button
+              className="btn-ghost"
+              style={{ width: "100%", marginTop: "12px" }}
+              onClick={() => setStep(0)}
+              disabled={loading}
+            >
               {t.s1b}
             </button>
           </div>
         )}
 
-        {/* ── STEP 2 ── */}
-        {step === 2 && (
+        {step === 2 && readyPosts.length === 0 && (
+          <div style={{ margin: "24px 0" }}>
+            <p style={{ marginBottom: "16px" }}>
+              Сохранённого поста в этой вкладке нет.
+            </p>
+            <button className="btn-sm" onClick={() => setStep(0)}>
+              Вернуться к выбору темы
+            </button>
+          </div>
+        )}
+
+        {step === 2 && readyPosts.length > 0 && (
           <div className="fi">
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "20px",
+                flexWrap: "wrap",
+                gap: "10px",
+              }}
+            >
               <div>
-                <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: "22px", fontWeight: 700 }}>
-                  {nicheObj?.icon} {cleanedPosts.length} {t.s2r}
+                <h2 style={{ ...titleStyle, fontSize: "22px" }}>
+                  {nicheObj?.icon} {readyPosts.length} {t.s2r}
                 </h2>
-                <p style={{ fontSize: "13px", color: "var(--text-dim)", marginTop: "4px" }}>
+                <p
+                  style={{
+                    fontSize: "13px",
+                    color: "var(--text-dim)",
+                    marginTop: "4px",
+                  }}
+                >
                   {t.s2ni} {nicheLabel} · {currentNetwork?.label}
                 </p>
               </div>
+
               <div style={{ display: "flex", gap: "8px" }}>
-                <button className="btn-sm" onClick={() => { setStep(1); setPosts([]); }}>{t.s2rg}</button>
-                <button className="btn-sm" onClick={() => { setStep(0); setPosts([]); setNiche(null); }}>{t.s2nw}</button>
+                <button
+                  className="btn-sm"
+                  onClick={() => setStep(niche ? 1 : 0)}
+                >
+                  {t.s2rg}
+                </button>
+                <button className="btn-sm" onClick={startNew}>
+                  {t.s2nw}
+                </button>
               </div>
             </div>
 
-            {cleanedPosts.map((post, i) => (
-              <div key={i} className="post-card">
-                <PostImage src={imgs[i]} />
-                <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--accent)" }} />
-                    <span style={{ fontSize: "12px", color: "var(--accent)", fontWeight: 600, letterSpacing: "0.05em" }}>
-                      {t.s2v} {i + 1}
+            {readyPosts.map((post, index) => (
+              <div key={index} className="post-card">
+                <div
+                  style={{
+                    padding: "12px 16px",
+                    borderBottom: "1px solid var(--border)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: "12px",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "12px",
+                        color: "var(--accent)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {t.s2v} {index + 1}
                     </span>
-                    <span style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "11px", color: "var(--text-dim)" }}>
-                      <NetworkIcon id={net} size={14} />
+                    <NetworkIcon id={net} size={14} />
+                    <span style={{ fontSize: "12px" }}>
                       {currentNetwork?.label}
                     </span>
                   </div>
+
                   <div style={{ display: "flex", gap: "8px" }}>
-                    <button className="btn-sm" onClick={() => cp(post, i)}>
-                      {copied === i ? t.s2cd : t.s2c}
+                    <button
+                      className="btn-sm"
+                      onClick={() => copyPost(post, index)}
+                    >
+                      {copied === index ? t.s2cd : t.s2c}
                     </button>
-                    <button className="btn-sm" onClick={() => setScheduleFor(i)}>
-                      📅 Запланировать
-                    </button>
+
+                    {net === "telegram" && (
+                      <button
+                        className="btn-sm"
+                        onClick={() => setScheduleFor(index)}
+                      >
+                        Запланировать
+                      </button>
+                    )}
                   </div>
                 </div>
+
                 <div style={{ padding: "16px" }}>
-                  <pre style={{ fontFamily: "'Manrope',sans-serif", fontSize: "14px", lineHeight: "1.8", color: "var(--text-mid)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                  <pre
+                    style={{
+                      fontFamily: "'Manrope',sans-serif",
+                      fontSize: "14px",
+                      lineHeight: "1.8",
+                      color: "var(--text-mid)",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                    }}
+                  >
                     {post.trim()}
                   </pre>
                 </div>
@@ -277,10 +618,14 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
         )}
       </div>
 
-      {scheduleFor !== null && (
+      {scheduleFor !== null && readyPosts[scheduleFor] && (
         <ScheduleModal
-          post={cleanedPosts[scheduleFor]}
-          niche={niche} fmt={fmt} net={net} pLang={pLang} comp={comp}
+          post={readyPosts[scheduleFor]}
+          niche={niche}
+          fmt={fmt}
+          net={net}
+          pLang={pLang}
+          comp={comp}
           userEmail={userEmail}
           onClose={() => setScheduleFor(null)}
         />
@@ -288,5 +633,4 @@ export function AppPage({ uiLang, onBack, step, onStepChange }) {
     </div>
   );
 }
-
 
